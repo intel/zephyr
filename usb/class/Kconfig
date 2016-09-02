@@ -32,6 +32,22 @@ config CDC_ACM_PORT_NAME
 	help
 	Port name through which CDC ACM class device driver is accessed
 
+config CDC_ACM_VID
+	hex
+	prompt "CDC ACM Device Class Driver Vendor ID"
+	depends on USB_CDC_ACM
+	default 8087
+	help
+	Sets the Vendor ID used by the CDC ACM Device Class Driver
+
+config CDC_ACM_PID
+	hex
+	prompt "CDC ACM Device Class Driver Product ID"
+	depends on USB_CDC_ACM
+	default 0AB6
+	help
+	Sets the Product ID used by the CDC ACM Device Class Driver
+
 config SYS_LOG_USB_CDC_ACM_LEVEL
 	int
 	prompt "USB CDC ACM device class driver log level"
