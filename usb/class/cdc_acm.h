@@ -58,10 +58,10 @@ struct cdc_acm_notification {
 } __packed;
 
 /* Intel vendor ID */
-#define CDC_VENDOR_ID	0x8087
+#define CDC_VENDOR_ID	CONFIG_CDC_ACM_VID
 
 /* Product Id, random value */
-#define CDC_PRODUCT_ID	0x0AB6
+#define CDC_PRODUCT_ID	CONFIG_CDC_ACM_PID
 
 
 /* Max packet size for Bulk endpoints */
