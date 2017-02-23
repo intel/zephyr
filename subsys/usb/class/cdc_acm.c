@@ -42,6 +42,7 @@
 #include <uart.h>
 #include <string.h>
 #include <misc/byteorder.h>
+#include "cdc_acm_config.h"
 #include "cdc_acm.h"
 #include "usb_device.h"
 #include "usb_common.h"
@@ -74,6 +75,8 @@ struct device *cdc_acm_dev;
 
 static struct k_sem poll_wait_sem;
 
+typedef void (*cdc_acm_desc_cb)(cdc_acm_cfg_t);
+
 /* Device data structure */
 struct cdc_acm_dev_data_t {
 	/* USB device status code */
@@ -100,8 +103,12 @@ struct cdc_acm_dev_data_t {
 	uint8_t notification_sent;
 };
 
+#ifdef CONFIG_USB_CDC_ACM_CONFIGURABLE
+    extern void cdc_acm_descriptor_callback (cdc_acm_cfg_t *cfg);
+#endif
+
 /* Structure representing the global USB description */
-static const uint8_t cdc_acm_usb_description[] = {
+static uint8_t cdc_acm_usb_description[CDC_ACM_DESC_SIZE] = {
 	/* Device descriptor */
 	USB_DEVICE_DESC_SIZE,           /* Descriptor size */
 	USB_DEVICE_DESC,                /* Descriptor type */
@@ -220,7 +227,9 @@ static const uint8_t cdc_acm_usb_description[] = {
 	LOW_BYTE(CDC_BULK_EP_MPS),
 	HIGH_BYTE(CDC_BULK_EP_MPS),     /* Max packet size */
 	0x00,                           /* Interval */
+};
 
+static uint8_t cdc_acm_string_desc[STRING_DESCS_SIZE] = {
 	/* String descriptor language, only one, so min size 4 bytes.
 	 * 0x0409 English(US) language code used
 	 */
@@ -228,22 +237,71 @@ static const uint8_t cdc_acm_usb_description[] = {
 	USB_STRING_DESC,                /* Descriptor type */
 	0x09,
 	0x04,
-
-	/* Manufacturer String Descriptor "Intel" */
-	0x0C,
-	USB_STRING_DESC,
-	'I', 0, 'n', 0, 't', 0, 'e', 0, 'l', 0,
-
-	/* Product String Descriptor "CDC-ACM" */
-	0x10,
-	USB_STRING_DESC,
-	'C', 0, 'D', 0, 'C', 0, '-', 0, 'A', 0, 'C', 0, 'M', 0,
-
-	/* Serial Number String Descriptor "00.01" */
-	0x0C,
-	USB_STRING_DESC,
-	'0', 0, '0', 0, '.', 0, '0', 0, '1', 0,
 };
+
+static cdc_acm_cfg_t desc_cfg = {
+    .vendor_id = CDC_VENDOR_ID,
+    .product_id =  CDC_PRODUCT_ID,
+    .vendor_string = "Intel",
+    .product_string = "CDC-ACM",
+    .serial_string = "00.01"
+};
+
+static uint8_t *ascii_to_unicode (uint8_t *in, uint8_t *out, unsigned size)
+{
+    unsigned i, j;
+
+    for (i = 0, j = 0; in[i] && j < size; ++i, j += 2) {
+        out[j] = in[i];
+        out[j + 1] = 0;
+    }
+
+    return out + j;
+}
+
+/* Generates a byte array representing the descriptor for 'string', which
+ * is written to 'out'. The return value is a pointer to the first byte
+ * after the written string descriptor in 'out' */
+static uint8_t *generate_string_desc (char *string, uint8_t *out)
+{
+    int len;
+
+    len = strlen(string) * 2;
+    if ((len + 2) > MAX_STRING_DESC_SIZE)
+        len = MAX_STRING_DESC_SIZE - 2;
+
+    *(out++) = len + 2;
+    *(out++) = USB_STRING_DESC;
+
+    return ascii_to_unicode(string, out, len);
+}
+
+static void generate_cdc_acm_descriptor (uint8_t *desc)
+{
+    uint8_t *pos;
+
+    /* String descriptors begin after descriptor 0 */
+    pos = cdc_acm_string_desc + USB_STRING_DESC_SIZE;
+
+    /* Read ASCII strings for vendor, product & serial from
+     * temporary configuration structure, generate the unicode
+     * string descriptors and write to cdc_acm_string_desc */
+    pos = generate_string_desc(desc_cfg.vendor_string, pos);
+    pos = generate_string_desc(desc_cfg.product_string, pos);
+    generate_string_desc(desc_cfg.serial_string, pos);
+
+    /* Copy Vendor and Product IDs from temporary configuration
+     * structure into cdc_acm_device_desc */
+    desc[CDC_VENDOR_OFFSET] = LOW_BYTE(desc_cfg.vendor_id);
+    desc[CDC_VENDOR_OFFSET + 1] = HIGH_BYTE(desc_cfg.vendor_id);
+
+    desc[CDC_PRODUCT_OFFSET] = LOW_BYTE(desc_cfg.product_id);
+    desc[CDC_PRODUCT_OFFSET + 1] = HIGH_BYTE(desc_cfg.product_id);
+
+    /* Copy the final string descriptors into cdc_acm_usb_description */
+    memcpy(desc + DEVICE_DESC_SIZE, cdc_acm_string_desc,
+            sizeof(cdc_acm_string_desc));
+}
 
 /**
  * @brief Handler called for Class requests not handled by the USB stack.
@@ -487,6 +545,11 @@ static int cdc_acm_init(struct device *dev)
 
 	cdc_acm_config.interface.payload_data = dev_data->interface_data;
 	cdc_acm_dev = dev;
+
+#ifdef CONFIG_USB_CDC_ACM_CONFIGURABLE
+    cdc_acm_descriptor_callback(&desc_cfg);
+#endif
+    generate_cdc_acm_descriptor(cdc_acm_usb_description);
 
 	/* Initialize the USB driver with the right configuration */
 	ret = usb_set_config(&cdc_acm_config);
