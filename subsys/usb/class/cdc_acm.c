@@ -227,9 +227,7 @@ static uint8_t cdc_acm_usb_description[CDC_ACM_DESC_SIZE] = {
 	LOW_BYTE(CDC_BULK_EP_MPS),
 	HIGH_BYTE(CDC_BULK_EP_MPS),     /* Max packet size */
 	0x00,                           /* Interval */
-};
 
-static uint8_t cdc_acm_string_desc[STRING_DESCS_SIZE] = {
 	/* String descriptor language, only one, so min size 4 bytes.
 	 * 0x0409 English(US) language code used
 	 */
@@ -280,8 +278,8 @@ static void generate_cdc_acm_descriptor (uint8_t *desc)
 {
     uint8_t *pos;
 
-    /* String descriptors begin after descriptor 0 */
-    pos = cdc_acm_string_desc + USB_STRING_DESC_SIZE;
+    /* String descriptors begin after string descriptor 0 */
+    pos = cdc_acm_usb_description + DEVICE_DESC_SIZE + USB_STRING_DESC_SIZE;
 
     /* Read ASCII strings for vendor, product & serial from
      * temporary configuration structure, generate the unicode
@@ -297,10 +295,6 @@ static void generate_cdc_acm_descriptor (uint8_t *desc)
 
     desc[CDC_PRODUCT_OFFSET] = LOW_BYTE(desc_cfg.product_id);
     desc[CDC_PRODUCT_OFFSET + 1] = HIGH_BYTE(desc_cfg.product_id);
-
-    /* Copy the final string descriptors into cdc_acm_usb_description */
-    memcpy(desc + DEVICE_DESC_SIZE, cdc_acm_string_desc,
-            sizeof(cdc_acm_string_desc));
 }
 
 /**
