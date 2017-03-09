@@ -32,6 +32,15 @@
 #include <toolchain.h>
 #include <sections.h>
 
+#ifdef CONFIG_FIRMWARE_VERSION_STRING
+#define VERSION_SECTION_SIZE 32
+#define FIRMWARE_FLASH_END 0x40034000
+#define DEFINE_FIRMWARE_VERSION_STRING(string) \
+	char firmware_version[VERSION_SECTION_SIZE] \
+	__attribute__((section("version"))) \
+	__attribute__((__used__)) = string
+#endif
+
 /* include platform dependent linker-defs */
 #ifdef CONFIG_X86
 /* Nothing yet to include */
@@ -160,6 +169,8 @@ extern char _image_ram_start[];
 extern char _image_ram_end[];
 extern char _image_text_start[];
 extern char _image_text_end[];
+extern char _version_rom_start[];
+extern char _version_rom_end[];
 
 /* end address of image. */
 extern char _end[];
