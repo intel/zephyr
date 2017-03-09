@@ -276,6 +276,16 @@ config X86_FIXED_IRQ_MAPPING
 	Specify whether the current interrupt controller in use has a fixed
 	mapping between IDT vectors and IRQ lines.
 
+config CODK_FIRMWARE_VERSION
+	bool "Enable declaration of a CODK firmware version string"
+	default n
+	help
+	Specify whether you want to declare a versioning string for CODK-based
+	x86 firmware, using DEFINE_CODK_FIRMWARE_VERSION("string"). This string
+	is guaranteed to be at the end of the binary file, and at the end of
+	x86 flash space, which makes it much easier for the Arduino IDE to
+	read.
+
 endmenu
 
 

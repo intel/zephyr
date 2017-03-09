@@ -32,6 +32,7 @@
 #define _DATA_SECTION_NAME datas
 #define _BSS_SECTION_NAME bss
 #define _NOINIT_SECTION_NAME noinit
+#define _VERSION_SECTION_NAME version
 
 #define _UNDEFINED_SECTION_NAME undefined
 
