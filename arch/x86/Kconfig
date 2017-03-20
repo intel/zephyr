@@ -276,6 +276,13 @@ config X86_FIXED_IRQ_MAPPING
 	Specify whether the current interrupt controller in use has a fixed
 	mapping between IDT vectors and IRQ lines.
 
+config FIRMWARE_VERSION_STRING
+	bool "Enable declaration of a firmware version string"
+	default n
+	help
+	Specify whether you want to declare a firmware version string with
+	DEFINE_FIRMWARE_VERSION_STRING(string)
+
 endmenu
 
 
