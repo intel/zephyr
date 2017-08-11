@@ -60,9 +60,14 @@ struct cdc_acm_notification {
 /* Intel vendor ID */
 #define CDC_VENDOR_ID	0x8086
 
+/* Vendor code byte offset in device descriptor */
+#define CDC_VENDOR_OFFSET 8
+
 /* Product Id, random value */
 #define CDC_PRODUCT_ID	0xF8A1
 
+/* Product code byte offset in device descriptor */
+#define CDC_PRODUCT_OFFSET 10
 
 /* Max packet size for Bulk endpoints */
 #define CDC_BULK_EP_MPS		64
@@ -81,6 +86,9 @@ struct cdc_acm_notification {
 #define CDC1_NUM_EP		0x01
 /* Number of Endpoints in the second interface */
 #define CDC2_NUM_EP		0x02
+
+/* Number of string descriptors */
+#define CDC_NUM_STRINGS 0x03
 
 #define CDC_ENDP_INT	0x81
 #define CDC_ENDP_OUT	0x03
@@ -125,5 +133,15 @@ struct cdc_acm_notification {
  */
 #define CDC_CONF_SIZE   (USB_CONFIGURATION_DESC_SIZE + \
 	(2 * USB_INTERFACE_DESC_SIZE) + (3 * USB_ENDPOINT_DESC_SIZE) + 19)
+
+#define STRING_DESCS_SIZE (USB_STRING_DESC_SIZE + \
+    ((MAX_STRING_DESC_SIZE + 2) * CDC_NUM_STRINGS))
+
+#define DEVICE_DESC_SIZE  (USB_CONFIGURATION_DESC_SIZE + \
+    (2 * USB_INTERFACE_DESC_SIZE) + (3 * USB_ENDPOINT_DESC_SIZE) + \
+    USB_DEVICE_DESC_SIZE + USB_HFUNC_DESC_SIZE + USB_CMFUNC_DESC_SIZE + \
+    USB_ACMFUNC_DESC_SIZE + USB_UFUNC_DESC_SIZE)
+
+#define CDC_ACM_DESC_SIZE   (DEVICE_DESC_SIZE + STRING_DESCS_SIZE)
 
 #endif /* __CDC_ACM_H__ */
