@@ -15,6 +15,35 @@ config USB_CDC_ACM
 	help
 	USB CDC ACM device class driver
 
+config USB_CDC_ACM_CONFIGURABLE
+	bool
+	prompt "USB CDC ACM device descriptor is configurable"
+	default n
+	help
+	Allows alternative data to be supplied for the USB device descriptor
+	beore it is registered. When this is enabled, you must define a callback
+	function called cdc_acm_descriptor_callback, which populates a passed
+	configuration structure.
+
+	Example;
+
+	#include <zephyr.h>
+	#include <cdc_acm_config.h>
+
+	char *vendor = "Vendor";
+	char *product = "Product";
+	char *serial = "0.1.234";
+
+	void cdc_acm_descriptor_callback (cdc_acm_cfg_t *cfg)
+	{
+		cfg->vendor_id = 0xAABB;
+		cfg->product_id = 0xCCDD;
+
+		memcpy(cfg->vendor_string, vendor, sizeof(cfg->vendor_string));
+		memcpy(cfg->product_string, product, sizeof(cfg->product_string));
+		memcpy(cfg->serial_string, serial, sizeof(cfg->serial_string));
+	}
+
 config CDC_ACM_PORT_NAME
 	string "CDC ACM class device driver port name"
 	depends on USB_CDC_ACM
