@@ -20,8 +20,8 @@ LOG_MODULE_REGISTER(espi_saf, CONFIG_ESPI_LOG_LEVEL);
 /* SAF EC Portal read/write flash access limited to 1-64 bytes */
 #define MAX_SAF_ECP_BUFFER_SIZE 64ul
 
-/* 1 second maximum for flash operations */
-#define MAX_SAF_FLASH_TIMEOUT 125000ul /* 1000ul */
+/* 1 s maximum for flash operations. Each iteration is 8 us */
+#define MAX_SAF_FLASH_TIMEOUT 125000ul
 
 /* 64 bytes @ 24MHz quad is approx. 6 us */
 #define SAF_WAIT_INTERVAL 8
@@ -217,6 +217,7 @@ static int saf_qmspi_init(const struct espi_saf_xec_config *xcfg,
 
 	qmode = regs->MODE;
 	if (!(qmode & MCHP_QMSPI_M_ACTIVATE)) {
+		LOG_ERR("%s QMSPI mode re-activated: %x", __func__, regs->MODE);
 		return -EAGAIN;
 	}
 
@@ -231,10 +232,13 @@ static int saf_qmspi_init(const struct espi_saf_xec_config *xcfg,
 	regs->IFCTRL =
 		(MCHP_QMSPI_IFC_WP_OUT_HI | MCHP_QMSPI_IFC_WP_OUT_EN |
 		 MCHP_QMSPI_IFC_HOLD_OUT_HI | MCHP_QMSPI_IFC_HOLD_OUT_EN);
+	LOG_DBG("QMSPI IFCTRL %x", regs->IFCTRL);
 
 	for (n = 0; n < MCHP_SAF_NUM_GENERIC_DESCR; n++) {
 		regs->DESCR[MCHP_SAF_CM_EXIT_START_DESCR + n] =
 			hwcfg->generic_descr[n];
+		LOG_DBG("QMSPI DESC %d %x", MCHP_SAF_CM_EXIT_START_DESCR+n,
+			regs->DESCR[MCHP_SAF_CM_EXIT_START_DESCR+n]);
 	}
 
 	regs->IEN = MCHP_QMSPI_IEN_XFR_DONE;
@@ -259,6 +263,7 @@ static int saf_qmspi_init(const struct espi_saf_xec_config *xcfg,
 
 	regs->MODE = qmode;
 	regs->CSTM = cstim;
+	LOG_DBG("CSTM: %x qmode:%x", regs->CSTM, qmode);
 
 	return 0;
 }
@@ -352,6 +357,8 @@ static void saf_flash_misc_cfg(MCHP_SAF_HW_REGS *regs, uint8_t cs,
 {
 	uint32_t d, v;
 
+	LOG_DBG("%s cs: %d prefix: %x flags: %x", __func__, cs,
+		fcfg->cont_prefix, fcfg->flags);
 	d = regs->SAF_FL_CFG_MISC;
 
 	v = MCHP_SAF_FL_CFG_MISC_CS0_CPE;
@@ -408,6 +415,10 @@ static void saf_flash_cfg(const struct device *dev,
 	regs->SAF_CS_OP[cs].OPC = fcfg->opc;
 	regs->SAF_CS_OP[cs].OP_DESCR = (uint32_t)fcfg->cs_cfg_descr_ids;
 
+	LOG_DBG("OPA WRITE %x ", regs->SAF_CS_OP[cs].OPA);
+	LOG_DBG("OPB ERASE %x", regs->SAF_CS_OP[cs].OPB);
+	LOG_DBG("OPC READ  %x", regs->SAF_CS_OP[cs].OPC);
+
 	did = MCHP_SAF_QMSPI_CS0_START_DESCR;
 	if (cs != 0) {
 		did = MCHP_SAF_QMSPI_CS1_START_DESCR;
@@ -418,6 +429,7 @@ static void saf_flash_cfg(const struct device *dev,
 		d |= (((did + 1) << MCHP_QMSPI_C_NEXT_DESCR_POS) &
 		      MCHP_QMSPI_C_NEXT_DESCR_MASK);
 		qregs->DESCR[did++] = d;
+		LOG_DBG("DESCR[%d]=0x%08x", did, d);
 	}
 
 	mchp_saf_poll2_mask_wr(regs, cs, fcfg->poll2_mask);
@@ -473,10 +485,13 @@ static int espi_saf_xec_configuration(const struct device *dev,
 
 	if ((fcfg == NULL) || (cfg->nflash_devices == 0U) ||
 	    (cfg->nflash_devices > MCHP_SAF_MAX_FLASH_DEVICES)) {
+		LOG_ERR("Invalid SAF cfg: flash devices");
 		return -EINVAL;
 	}
 
 	if (regs->SAF_FL_CFG_MISC & MCHP_SAF_FL_CFG_MISC_SAF_EN) {
+		LOG_ERR("%s %x configure after activation\n", __func__,
+		       regs->SAF_FL_CFG_MISC);
 		return -EAGAIN;
 	}
 
@@ -491,6 +506,8 @@ static int espi_saf_xec_configuration(const struct device *dev,
 	totalsz = fcfg->flashsz;
 	regs->SAF_FL_CFG_THRH = totalsz;
 	saf_flash_cfg(dev, fcfg, 0);
+	LOG_DBG("SAF_CS0_CFG_P2M %x", regs->SAF_CS0_CFG_P2M);
+	LOG_DBG("SAF_CS1_CFG_P2M %x", regs->SAF_CS1_CFG_P2M);
 
 	/* optional second flash device connected to CS1 */
 	if (cfg->nflash_devices > 1) {
