@@ -1,0 +1,37 @@
+---
+variables:
+  ECFWTOKEN: 654a0c3c33a98e5244be1d82f336c8
+  ECFWPROJECT_ID: 35613
+  GITLAB_INTEL_API: https://gitlab.devtools.intel.com/api/v4/projects
+
+image: amr-registry-pre.caas.intel.com/ec-firmware/linux_zephyr:09_28_0_onlyKW
+
+stages:
+  - build
+  - check
+
+build:
+  tags:
+    - caas
+  stage: build
+  before_script:
+  script:
+  # Trigger pipeline in ecfw repo. See trigger under CI/CD settings for
+  # more details
+  - PIPELINE_TRIGGER=${GITLAB_INTEL_API}/${ECFWPROJECT_ID}/trigger/pipeline
+  - curl -X POST -F token=${ECFWTOKEN} -F ref=master "${PIPELINE_TRIGGER}"
+  only:
+    - merge_requests
+
+
+check:
+  tags:
+    - caas
+  stage: check
+  before_script:
+  script:
+  - echo "Done"
+  only:
+    - merge_requests
+  dependencies:
+  - build
