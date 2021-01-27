@@ -13,3 +13,9 @@ properties:
 
     label:
       required: true
+
+    "#pwm-cells":
+      const: 1
+
+pwm-cells:
+  - channel
