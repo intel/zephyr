@@ -116,6 +116,30 @@ enum espi_bus_event {
 };
 
 /**
+ * @brief eSPI LTR Scale
+ *
+ * eSPI LTR scale value used for LTR register programming
+ */
+enum espi_ltr_scale {
+	ESPI_LTR_SCALE_1NSEC = 0,
+	ESPI_LTR_SCALE_32NSEC = BIT(0),
+	ESPI_LTR_SCALE_1024NSEC = BIT(1),
+	ESPI_LTR_SCALE_32USEC = BIT(0) | BIT(1),
+	ESPI_LTR_SCALE_1MSEC = BIT(2),
+	ESPI_LTR_SCALE_33MSEC = BIT(0) | BIT(2),
+};
+
+/**
+ * @brief eSPI peripheral channel events.
+ *
+ * eSPI peripheral channel event types to indicate users.
+ */
+enum espi_pc_event {
+	ESPI_PC_EVT_BUS_CHANNEL_READY = BIT(0),
+	ESPI_PC_EVT_BUS_MASTER_ENABLE = BIT(1),
+};
+
+/**
  * @cond INTERNAL_HIDDEN
  *
  */
@@ -328,6 +352,18 @@ struct espi_flash_packet {
 	uint16_t len;
 };
 
+/**
+ * @brief eSPI LTR configuration parameters
+ */
+struct ltr_cfg_pkt {
+	/** Latency scale */
+	enum espi_ltr_scale ltr_scale;
+	/** Latency value in unit of scale */
+	uint16_t latency;
+	/** LTR Required bit 1-ltr as per scale, 0 -Infinite latency */
+	uint8_t ltr_req;
+};
+
 struct espi_callback;
 
 /**
@@ -390,6 +426,8 @@ typedef int (*espi_api_lpc_read_request)(const struct device *dev,
 typedef int (*espi_api_lpc_write_request)(const struct device *dev,
 					  enum lpc_peripheral_opcode op,
 					  uint32_t *data);
+typedef int (*espi_api_ltr_write_request)(const struct device *dev,
+					  struct ltr_cfg_pkt *req);
 /* Logical Channel 1 APIs */
 typedef int (*espi_api_send_vwire)(const struct device *dev,
 				   enum espi_vwire_signal vw,
@@ -421,6 +459,7 @@ __subsystem struct espi_driver_api {
 	espi_api_write_request write_request;
 	espi_api_lpc_read_request read_lpc_request;
 	espi_api_lpc_write_request write_lpc_request;
+	espi_api_ltr_write_request send_ltr;
 	espi_api_send_vwire send_vwire;
 	espi_api_receive_vwire receive_vwire;
 	espi_api_send_oob send_oob;
@@ -642,6 +681,37 @@ static inline int z_impl_espi_write_lpc_request(const struct device *dev,
 
 	return api->write_lpc_request(dev, op, data);
 }
+
+
+/**
+ * @brief Send LTR request to eSPI host which generates an eSPI transaction.
+ *
+ * This routine provides a generic interface to send ltr value to eSPI host
+ * which triggers an eSPI transaction. The eSPI packet is assembled by the
+ * hardware block.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ * @param req Address of a structure representing LTR configuration request.
+ *
+ * @retval 0 If successful.
+ * @retval -ENOTSUP espi master has not enabled LTR.
+ */
+__syscall int espi_send_ltr(const struct device *dev,
+			    struct ltr_cfg_pkt *req);
+
+static inline int z_impl_espi_send_ltr(const struct device *dev,
+				       struct ltr_cfg_pkt *req)
+{
+	const struct espi_driver_api *api =
+		(const struct espi_driver_api *)dev->api;
+
+	if (!api->send_ltr) {
+		return -ENOTSUP;
+	}
+
+	return api->send_ltr(dev, req);
+}
+
 
 /**
  * @brief Sends system/platform signal as a virtual wire packet.
