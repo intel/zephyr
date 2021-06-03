@@ -21,6 +21,7 @@ LOG_MODULE_REGISTER(i2c_mchp, CONFIG_I2C_LOG_LEVEL);
 
 #define EC_OWN_I2C_ADDR		0x7F
 #define RESET_WAIT_US		20
+#define BUS_IDLE_US_DFLT	5
 
 /* I2C timeout is  10 ms (WAIT_INTERVAL * WAIT_COUNT) */
 #define WAIT_INTERVAL		50
@@ -220,6 +221,25 @@ static int wait_bus_free(const struct device *dev)
 	return 0;
 }
 
+/*
+ * Wait with timeout for I2C controller to finish transmit/receive of one
+ * byte(address or data).
+ * When transmit/receive operation is started the I2C PIN status is 1. Upon
+ * normal completion I2C PIN status asserts(0).
+ * We loop checking I2C status for the following events:
+ * Bus Error:
+ *      Reset controller and return -EBUSY
+ * Lost Arbitration:
+ *      Return -EPERM. We lost bus to another controller. No reset.
+ * PIN == 0: I2C Status LRB is valid and contains ACK/NACK data on 9th clock.
+ *      ACK return 0 (success)
+ *      NACK Issue STOP, wait for bus minimum idle time, return -EIO.
+ * Timeout:
+ *      Reset controller and return -ETIMEDOUT
+ *
+ * NOTE: After generating a STOP the controller will not generate a START until
+ * Bus Minimum Idle time has expired.
+ */
 static int wait_completion(const struct device *dev)
 {
 	const struct i2c_xec_config *config =
@@ -228,28 +248,43 @@ static int wait_completion(const struct device *dev)
 	int counter = 0;
 	uint32_t ba = config->base_addr;
 
-	/* Wait for transaction to be completed */
-	while (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_PIN) {
-		ret = xec_spin_yield(&counter);
+	while (1) {
+		uint8_t status = MCHP_I2C_SMB_STS_RO(ba);
 
-		if (ret < 0) {
-			if (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_PIN) {
-				recover_from_error(dev);
-				return ret;
-			}
+		/* Is bus error ? */
+		if (status & MCHP_I2C_SMB_STS_BER) {
+			recover_from_error(dev);
+			return -EBUSY;
 		}
-	}
 
-	/* Check if Slave send ACK/NACK */
-	if (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_LRB_AD0) {
-		recover_from_error(dev);
-		return -EIO;
-	}
+		/* Is Lost arbitration ? */
+		status = MCHP_I2C_SMB_STS_RO(ba);
+		if (status & MCHP_I2C_SMB_STS_LAB) {
+			return -EPERM;
+		}
 
-	/* Check for bus error */
-	if (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_BER) {
-		recover_from_error(dev);
-		return -EBUSY;
+		status = MCHP_I2C_SMB_STS_RO(ba);
+		/* PIN -> 0 indicates I2C is done */
+		if (!(status & MCHP_I2C_SMB_STS_PIN)) {
+			/* PIN == 0. LRB contains state of 9th bit */
+			if (status & MCHP_I2C_SMB_STS_LRB_AD0) { /* NACK? */
+				/* Send STOP */
+				MCHP_I2C_SMB_CTRL_WO(ba) =
+						MCHP_I2C_SMB_CTRL_PIN |
+						MCHP_I2C_SMB_CTRL_ESO |
+						MCHP_I2C_SMB_CTRL_STO |
+						MCHP_I2C_SMB_CTRL_ACK;
+				k_busy_wait(BUS_IDLE_US_DFLT);
+				return -EIO;
+			}
+			break; /* success: ACK */
+		}
+
+		ret = xec_spin_yield(&counter);
+		if (ret < 0) {
+			recover_from_error(dev);
+			return ret;
+		}
 	}
 
 	return 0;
