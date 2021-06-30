@@ -88,6 +88,42 @@ config HPET_TIMER
 	  This option selects High Precision Event Timer (HPET) as a
 	  system timer.
 
+if HPET_TIMER
+
+config HPET_INT_LEVEL_TRIGGER
+	bool "Set HPET timer interrupt as level trigger"
+	help
+	  this option is used to set interrupt as level trigger for ARM core
+	  like EHL PSE, whose DTS interrupts setting has no "sense" cell.
+
+config HPET_MIN_DELAY
+	int "HPET minimum delay time to set"
+	default 1000
+	help
+	  The comparator value must be set farther than this option, ahead of
+	  the current main counter value. Or interrupt might be missed due
+	  to hardware latencies.
+
+choice
+	prompt "HPET clock period"
+	default HPET_CLK_PERIOD_FEMPTOSECONDS
+
+config HPET_CLK_PERIOD_FEMPTOSECONDS
+	bool "Select femptoseconds as HPET clock period"
+	help
+	  This option indicates the period at which the counter increments in
+	  femptoseconds (10^-15 seconds)
+
+config HPET_CLK_PERIOD_PICOSECONDS
+	bool "Select picoseconds as HPET clock period"
+	help
+	  This option indicates the period at which the counter increments in
+	  picoseconds (10^-12 seconds)
+
+endchoice
+
+endif # HPET_TIMER
+
 menuconfig ARCV2_TIMER
 	bool "ARC Timer"
 	default y
