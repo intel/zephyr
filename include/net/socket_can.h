@@ -37,11 +37,24 @@ extern "C" {
 #define SOL_CAN_RAW (SOL_CAN_BASE + CAN_RAW)
 
 enum {
-	CAN_RAW_FILTER = 1,
+	CAN_RAW_FILTER          = 1,
+#ifdef CONFIG_NET_SOCKETS_CAN_FD
+	CAN_RAW_FD_FRAMES       = 2,
+#endif
+
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+	CAN_RAW_ERR_FILTER      = 3,
+#endif
 };
 
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+/* error class (mask) in can_id */
+#define CAN_ERR_LOSTARB      0x00000001U        /* lost arbitration */
+#define CAN_ERR_BUSOFF       0x00000002U        /* Bus OFF */
+#endif
+
 /* Socket CAN MTU size */
-#define CAN_MTU		CAN_MAX_DLEN
+#define CAN_MTU         CAN_MAX_DLEN
 
 /**
  * struct sockaddr_can - The sockaddr structure for CAN sockets
@@ -49,7 +62,7 @@ enum {
  */
 struct sockaddr_can {
 	sa_family_t can_family;
-	int         can_ifindex;
+	int can_ifindex;
 };
 
 /**

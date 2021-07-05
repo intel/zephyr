@@ -182,6 +182,18 @@ config NET_SOCKETS_CAN
 	help
 	  The value depends on your network needs.
 
+config NET_SOCKETS_CAN_FD
+	bool "Enable CAN FD support for CAN interface"
+	depends on NET_L2_CANBUS_RAW
+	help
+	  This option enables CAN FD support for selected interface.
+
+config NET_SOCKETS_CAN_ERR_FILTER
+	bool "Enable CAN Error filter"
+	depends on NET_L2_CANBUS_RAW
+	help
+	  This option enables error filtering option for selected interface.
+
 config NET_SOCKETS_CAN_RECEIVERS
 	int "How many simultaneous SocketCAN receivers are allowed"
 	default 1

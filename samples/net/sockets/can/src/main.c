@@ -16,6 +16,9 @@ LOG_MODULE_REGISTER(net_socket_can_sample, LOG_LEVEL_DBG);
 #define STACKSIZE 1024
 #define SLEEP_PERIOD K_SECONDS(1)
 
+#define CAN_TEST_INTERFACE (1)
+#define MAX_CAN_IFACE (2)
+
 static k_tid_t tx_tid;
 static K_THREAD_STACK_DEFINE(tx_stack, STACKSIZE);
 static struct k_thread tx_data;
@@ -42,8 +45,8 @@ static struct can_filter filter;
 static void tx(int *can_fd)
 {
 	int fd = POINTER_TO_INT(can_fd);
-	struct zcan_frame msg = {0};
-	struct can_frame frame = {0};
+	struct zcan_frame msg = { 0 };
+	struct can_frame frame = { 0 };
 	int ret, i;
 
 	msg.dlc = 8U;
@@ -161,19 +164,39 @@ static void rx(int *can_fd, int *do_close_period,
 	}
 }
 
+struct ud {
+	struct net_if *can_iface_list[MAX_CAN_IFACE];
+	uint8_t can_iface_count;
+};
+
+static void iface_cb(struct net_if *iface, void *user_data)
+{
+	struct ud *ud = user_data;
+
+	if (net_if_l2(iface) == &NET_L2_GET_NAME(CANBUS_RAW)) {
+		if (ud->can_iface_count < MAX_CAN_IFACE) {
+			ud->can_iface_list[ud->can_iface_count++] = iface;
+		}
+	}
+}
+
+static struct ud can_bus;
+
 static int setup_socket(void)
 {
 	struct sockaddr_can can_addr;
-	struct net_if *iface;
 	int fd, rx_fd;
 	int ret;
 
 	can_copy_zfilter_to_filter(&zfilter, &filter);
 
-	iface = net_if_get_first_by_type(&NET_L2_GET_NAME(CANBUS_RAW));
-	if (!iface) {
-		LOG_ERR("No CANBUS network interface found!");
-		return -ENOENT;
+	can_bus.can_iface_count = 0;
+	net_if_foreach(iface_cb, &can_bus);
+
+	if (can_bus.can_iface_count == 0) {
+		LOG_ERR("\nNo CAN device found");
+		ret = -1;
+		return ret;
 	}
 
 	fd = socket(AF_CAN, SOCK_RAW, CAN_RAW);
@@ -182,8 +205,8 @@ static int setup_socket(void)
 		LOG_ERR("Cannot create %s CAN socket (%d)", "1st", ret);
 		return ret;
 	}
-
-	can_addr.can_ifindex = net_if_get_by_iface(iface);
+	can_addr.can_ifindex =
+		net_if_get_by_iface(can_bus.can_iface_list[CAN_TEST_INTERFACE - 1]);
 	can_addr.can_family = PF_CAN;
 
 	ret = bind(fd, (struct sockaddr *)&can_addr, sizeof(can_addr));
@@ -201,6 +224,35 @@ static int setup_socket(void)
 		goto cleanup;
 	}
 
+#ifdef CONFIG_NET_SOCKETS_CAN_FD
+	int enable_fd;
+
+	enable_fd = true;
+	LOG_ERR("\nIntel:: Setting FD CAN_RAW\n");
+	ret = setsockopt(fd, SOL_CAN_RAW, CAN_RAW_FD_FRAMES, &enable_fd,
+			 sizeof(enable_fd));
+	if (ret < 0) {
+		ret = -errno;
+		LOG_ERR("Cannot set CAN sockopt (%d)", ret);
+		goto cleanup;
+	}
+#endif
+
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+	uint32_t err_mask;
+
+	err_mask = CAN_ERR_LOSTARB;
+	LOG_ERR("\nIntel:: CAN ERR FILTER\n");
+	ret = setsockopt(fd, SOL_CAN_RAW, CAN_RAW_ERR_FILTER, &err_mask,
+			 sizeof(err_mask));
+	if (ret < 0) {
+		ret = -errno;
+		LOG_ERR("Cannot set CAN sockopt (%d)", ret);
+		goto cleanup;
+	}
+#endif
+
+	LOG_ERR("\nIntel:: thread create tx\n");
 	/* Delay TX startup so that RX is ready to receive */
 	tx_tid = k_thread_create(&tx_data, tx_stack,
 				 K_THREAD_STACK_SIZEOF(tx_stack),
