@@ -29,6 +29,59 @@
 extern "C" {
 #endif
 
+#ifdef CONFIG_UART_RS_485
+
+/* Set node to RX only mode, DE signals are not asserted. */
+#define UART_DRIVER_CMD_SET_RX_ONLY_MODE (2)
+
+/* Set node to TX only mode, RE signals are not asserted. */
+#define UART_DRIVER_CMD_SET_TX_ONLY_MODE (3)
+#endif  /* CONFIG_UART_RS_485 */
+
+/**
+ * UART RS-485 transfer mode.
+ */
+typedef enum {
+	/** Full Duplex mode. */
+	UART_RS485_XFER_MODE_FULL_DUPLEX,
+
+	/** Software Controlled Half Duplex mode. */
+	UART_RS485_XFER_MODE_HALF_DUPLEX
+
+} uart_rs485_transfer_mode_t;
+
+/**$
+ *  UART RS-485 polarity for de and re signals.$
+ */
+typedef enum {
+	UART_RS485_POL_ACTIVE_LOW = 0,
+	UART_RS485_POL_ACTIVE_HIGH
+} uart_rs485_polarity_t;
+
+struct uart_rs_485_config {
+	/** de to re turnaround time in nanoseconds. */
+	uint32_t de_re_tat_ns;
+
+	/** re to de turnaround time in nanoseconds. */
+	uint32_t re_de_tat_ns;
+
+	/** Assertion time for DE in nanoseconds. */
+	uint32_t de_assertion_time_ns;
+
+	/** De-assertion time for DE in nanoseconds */
+	uint32_t de_deassertion_time_ns;
+
+	/** Transfer mode. 0: Full Duplex , 1:half duplex.*/
+	uart_rs485_transfer_mode_t transfer_mode : 1;
+
+	/** de polarity 0:active low , 1:active high. */
+	uart_rs485_polarity_t de_polarity : 1;
+
+	/** re polarity 0:active low , 1:active high. */
+	uart_rs485_polarity_t re_polarity : 1;
+};
+
+
 /** @brief Line control signals. */
 enum uart_line_ctrl {
 	UART_LINE_CTRL_BAUD_RATE = BIT(0),
@@ -36,6 +89,17 @@ enum uart_line_ctrl {
 	UART_LINE_CTRL_DTR = BIT(2),
 	UART_LINE_CTRL_DCD = BIT(3),
 	UART_LINE_CTRL_DSR = BIT(4),
+	/* Line controls supported by INTEL_PSE board. */
+	UART_LINE_CTRL_BREAK_CONDN = BIT(10),
+	UART_LINE_CTRL_LOOPBACK    = BIT(11),
+	UART_LINE_CTRL_AFCE        =  BIT(12),
+	UART_LINE_CTRL_LINE_STATUS_REPORT_MASK = BIT(13),
+	UART_LINE_CTRL_CTS         = BIT(14),
+	/* Enable/disable rs485 mode */
+#ifdef CONFIG_UART_RS_485
+	UART_LINE_CTRL_RS_485      = BIT(15),
+#endif  /* CONFIG_UART_RS_485 */
+
 };
 
 /**
@@ -249,6 +313,9 @@ struct uart_event {
 typedef void (*uart_callback_t)(const struct device *dev,
 				struct uart_event *evt, void *user_data);
 
+typedef void (*uart_unsol_rx_cb_t)(const struct device *port, void *param,
+				   int status, uint32_t line_err,  int len);
+
 /**
  * @brief UART controller configuration structure
  *
@@ -380,8 +447,19 @@ __subsystem struct uart_driver_api {
 			 const struct uart_config *cfg);
 	int (*config_get)(const struct device *dev, struct uart_config *cfg);
 
-#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	int (*read_buffer_polled)(const struct device *dev, uint8_t *buff, int32_t len,
+                                  uint32_t *line_status);
 
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	int (*enable_unsol_receive)(const struct device *dev, uint8_t *buff, int32_t len,
+				    uart_unsol_rx_cb_t cb, void *param);
+
+	int (*disable_unsol_receive)(const struct device *dev);
+
+	int (*get_unsol_data)(const struct device *dev, uint8_t *buff,
+			      int32_t len);
+
+	int (*get_unsol_data_len)(const struct device *dev, int *p_len);
 	/** Interrupt driven FIFO fill function */
 	int (*fifo_fill)(const struct device *dev, const uint8_t *tx_data,
 			 int len);
@@ -440,6 +518,12 @@ __subsystem struct uart_driver_api {
 #ifdef CONFIG_UART_DRV_CMD
 	int (*drv_cmd)(const struct device *dev, uint32_t cmd, uint32_t p);
 #endif
+
+#ifdef CONFIG_UART_RS_485
+	int (*rs_485_config_set)(const struct device *dev, struct uart_rs_485_config
+				 *config);
+#endif  /* CONFIG_UART_RS_485*/
+
 
 };
 
@@ -769,6 +853,181 @@ static inline int z_impl_uart_config_get(const struct device *dev,
 	}
 
 	return api->config_get(dev, cfg);
+}
+
+/**
+ * @brief Polled read to a buffer.
+ *
+ * This routine is a blocking call for reading data into a buffer in polled
+ * mode for specified length. The call returns the length of data read if no
+ * errors occur during read. In case of error, a negative error is returned.
+ * The line status is populated with the respectve line error if error is due
+ * to a uart receive line error.
+ *
+ * Note: When enabling DMA for transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff  Buffer to which data is to be read.
+ * @len length to be read.
+ * @line_status pointer to uint32_t populated with line status.
+ *
+ * @retval negative if error was detected in read.
+ *
+ * @retval length of data read.
+ */
+__syscall int uart_read_buffer_polled(const struct device *dev, uint8_t *buff,
+                                      int32_t len, uint32_t *line_status);
+
+static inline int z_impl_uart_read_buffer_polled(const struct device *dev, uint8_t *buff,
+                                                 int32_t len, uint32_t *line_status)
+{
+        const struct uart_driver_api *api =
+                (const struct uart_driver_api *)dev->api;
+
+        if (api->read_buffer_polled) {
+                return api->read_buffer_polled(dev, buff, len, line_status);
+        }
+        return -ENOTSUP;
+}
+
+/**
+ * @brief Enable unsolicited receive on UART device.
+ *
+ * @details Enables receiving unsolicited data into the buffer specified.User
+ * callback is called whenever any data is received on the uart device and also
+ * indicates the length of unread data in the buffer. The buffer provided for
+ * enabling unsolicited read is maintained as a circular buffer such that the
+ * oldest data in the buffer gets overwritten when data exceeds the buffer
+ * length. Users can read data from the unsolicited data buffer to any other
+ * buffer by calling uart_get_unsol_data.
+ * The buffer provided should be valid until unsolicited receive is disabled.
+ * Users should clear any prior registered irq handlers for uart set by
+ * uart_irq_callback_set before calling this API.
+ *
+ * Read APIs, polled or asynchronous are not supported for the uart device when
+ * unsolicited receive is active.
+ *
+ * @param dev UART device structure.
+ * @param buff Buffer to which unsolicited data would be read.
+ * @param size Size of the data buffer.
+ * @param cb Callback to be called when data is recevied.
+ * @param usr_param Parameter passed in callback.
+ *
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EIO Error occurred.
+ * @retval -EBUSY if the device is busy.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_enable_unsol_receive(const struct device *dev, uint8_t *buff,
+					int32_t size, uart_unsol_rx_cb_t cb,
+					void *usr_param);
+
+static inline int z_impl_uart_enable_unsol_receive(const struct device *dev,
+						   uint8_t *buff, int32_t size,
+						   uart_unsol_rx_cb_t cb,
+						   void *usr_param)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->enable_unsol_receive != NULL) {
+		return api->enable_unsol_receive(dev, buff, size,
+						 cb, usr_param);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Disable unsolicited receive on UART device.
+ *
+ * @details Disables unsolicited receive for specified uart device.
+ *
+ * @param dev UART device structure.
+ *
+ * @retval -EIO Error occurred.
+ * @retval 0 If request was successful.
+ * @retval -ENOTSUP if the function is not supported.
+ */
+__syscall int uart_disable_unsol_receive(const struct device *dev);
+
+static inline int z_impl_uart_disable_unsol_receive(const struct device *dev)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->disable_unsol_receive != NULL) {
+		return api->disable_unsol_receive(dev);
+	}
+#endif
+	return -ENOTSUP;
+
+}
+
+/**
+ * @brief Get data from unsolicited receive buffer.
+ *
+ * @details Copies data from the unsolicited receive buffer to the use spcified
+ * It can be called from the unsolicited callback handler to retrieve
+ * accumulted data
+ *
+ * @param dev UART device structure.
+ * @param buff buffer to which data is to be copied.
+ * @param len length of data which is to be copied from the unsolicted receive
+ * buffer.
+
+ * @retval -EIO Error occurred.
+ * @retval -ENOTSUP if the function is not supported.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_get_unsol_data(const struct device *dev, uint8_t *buff,
+				  int32_t len);
+static inline int z_impl_uart_get_unsol_data(const struct device *dev, uint8_t *buff,
+					     int32_t len)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->get_unsol_data != NULL) {
+		return api->get_unsol_data(dev, buff, len);
+	}
+#endif
+	return -ENOTSUP;
+
+}
+
+/**
+ * @brief Get length of  data in unsolicited receive buffer.
+ *
+ * @details Returns current length of data in unsolicited receive buffer.
+ *
+ *
+ * @param dev UART device structure.
+ * @param p_len pointer to int to be populated with length of buffer.
+
+ * @retval -EIO Error occurred.
+ * @retval -ENOTSUP if the function is not supported.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_get_unsol_data_len(const struct device *dev, int32_t *p_len);
+
+static inline int z_impl_uart_get_unsol_data_len(const struct device *dev,
+						 int32_t *p_len)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->get_unsol_data != NULL) {
+		return api->get_unsol_data_len(dev, p_len);
+	}
+#endif
+	return -ENOTSUP;
+
 }
 
 /**
@@ -1281,6 +1540,23 @@ static inline int z_impl_uart_drv_cmd(const struct device *dev, uint32_t cmd,
 	}
 	return api->drv_cmd(dev, cmd, p);
 #endif
+
+	return -ENOTSUP;
+}
+
+__syscall int uart_rs_485_config_set(const struct device *dev,
+				     struct uart_rs_485_config *config);
+static inline int z_impl_uart_rs_485_config_set(const struct device *dev,
+						struct uart_rs_485_config *config)
+{
+#ifdef CONFIG_UART_RS_485
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api->rs_485_config_set) {
+		return api->rs_485_config_set(dev, config);
+	}
+#endif /* CONFIG_UART_RS_485 */
 
 	return -ENOTSUP;
 }
