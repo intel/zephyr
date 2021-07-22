@@ -143,3 +143,67 @@ static inline int z_vrfy_uart_drv_cmd(const struct device *dev, uint32_t cmd,
 }
 #include <syscalls/uart_drv_cmd_mrsh.c>
 #endif /* CONFIG_UART_DRV_CMD */
+
+static inline int z_vrfy_uart_read_buffer_polled(const struct device *dev, uint8_t *buff,
+                                                 int32_t len, uint32_t *status)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, read_buffer_polled));
+        Z_OOPS(Z_SYSCALL_MEMORY_WRITE(buff, len));
+        return z_impl_uart_read_buffer_polled((const struct device *)dev,
+                                              (uint8_t *)buff, (int32_t)len, (uint32_t *)status);
+}
+#include <syscalls/uart_read_buffer_polled_mrsh.c>
+
+static inline int z_vrfy_uart_enable_unsol_receive(const struct device *dev,
+                                                   uint8_t *buff, int32_t size, uart_unsol_rx_cb_t cb,
+                                                   void *usr_param)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, enable_unsol_receive));
+        Z_OOPS(Z_SYSCALL_MEMORY_READ(buff, (int32_t)size));
+        Z_OOPS(Z_SYSCALL_VERIFY_MSG(cb == NULL,
+                                    "Callbacks forbidden from user mode"));
+        return z_impl_uart_enable_unsol_receive((const struct device *)dev,
+                                                (uint8_t *)buff, (int32_t)size, (uart_unsol_rx_cb_t)cb,
+                                                (void *)usr_param);
+}
+#include <syscalls/uart_enable_unsol_receive_mrsh.c>
+
+static inline int z_vrfy_uart_disable_unsol_receive(const struct device *dev)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, disable_unsol_receive));
+        return z_impl_uart_disable_unsol_receive((const struct device *)dev);
+}
+#include <syscalls/uart_disable_unsol_receive_mrsh.c>
+
+static inline int z_vrfy_uart_get_unsol_data(const struct device *dev,
+                                             uint8_t *buff, int32_t len)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, get_unsol_data));
+        Z_OOPS(Z_SYSCALL_MEMORY_WRITE(buff, len));
+        return z_impl_uart_get_unsol_data((const struct device *)dev,
+                                          (uint8_t *)buff, (int32_t)len);
+}
+#include <syscalls/uart_get_unsol_data_mrsh.c>
+
+static inline int z_vrfy_uart_get_unsol_data_len(const struct device *dev,
+                                                 int32_t *p_len)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, get_unsol_data_len));
+        Z_OOPS(Z_SYSCALL_MEMORY_WRITE(p_len, sizeof(int32_t)));
+        return z_impl_uart_get_unsol_data_len((const struct device *)dev,
+                                              (int32_t *)p_len);
+}
+#include <syscalls/uart_get_unsol_data_len_mrsh.c>
+
+#ifdef CONFIG_UART_RS_485
+static inline int z_vrfy_uart_rs_485_config_set(const struct device *dev,
+                                                struct uart_rs_485_config *config)
+{
+        Z_OOPS(Z_SYSCALL_DRIVER_UART(dev, rs_485_config_set));
+        Z_OOPS(Z_SYSCALL_MEMORY_READ(config,
+                                     sizeof(struct uart_rs_485_config)));
+        return z_impl_uart_rs_485_config_set((const struct device *)dev,
+                                             (struct uart_rs_485_config *)config);
+}
+#include <syscalls/uart_rs_485_config_set_mrsh.c>
+#endif
