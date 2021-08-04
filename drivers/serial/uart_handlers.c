@@ -154,6 +154,7 @@ static inline int z_vrfy_uart_read_buffer_polled(const struct device *dev, uint8
 }
 #include <syscalls/uart_read_buffer_polled_mrsh.c>
 
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
 static inline int z_vrfy_uart_enable_unsol_receive(const struct device *dev,
                                                    uint8_t *buff, int32_t size, uart_unsol_rx_cb_t cb,
                                                    void *usr_param)
@@ -194,6 +195,7 @@ static inline int z_vrfy_uart_get_unsol_data_len(const struct device *dev,
                                               (int32_t *)p_len);
 }
 #include <syscalls/uart_get_unsol_data_len_mrsh.c>
+#endif
 
 #ifdef CONFIG_UART_RS_485
 static inline int z_vrfy_uart_rs_485_config_set(const struct device *dev,
