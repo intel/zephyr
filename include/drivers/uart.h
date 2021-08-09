@@ -29,6 +29,21 @@
 extern "C" {
 #endif
 
+
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+#ifdef CONFIG_UART_9_BIT
+#define UART_DRIVER_CMD_SEND_ADDR (1)
+#endif /* CONFIG_UART_9_BIT*/
+#ifdef CONFIG_UART_RS_485
+
+/* Set node to RX only mode, DE signals are not asserted. */
+#define UART_DRIVER_CMD_SET_RX_ONLY_MODE (2)
+
+/* Set node to TX only mode, RE signals are not asserted. */
+#define UART_DRIVER_CMD_SET_TX_ONLY_MODE (3)
+#endif  /* CONFIG_UART_RS_485 */
+#endif  /* CONFIG_BOARD_EHL_PSE_CRB */
+
 /** @brief Line control signals. */
 enum uart_line_ctrl {
 	UART_LINE_CTRL_BAUD_RATE = BIT(0),
@@ -36,6 +51,22 @@ enum uart_line_ctrl {
 	UART_LINE_CTRL_DTR = BIT(2),
 	UART_LINE_CTRL_DCD = BIT(3),
 	UART_LINE_CTRL_DSR = BIT(4),
+
+	/* Line controls supported by INTEL_PSE board. */
+	UART_LINE_CTRL_BREAK_CONDN = BIT(10),
+	UART_LINE_CTRL_LOOPBACK    = BIT(11),
+	UART_LINE_CTRL_AFCE        =  BIT(12),
+	UART_LINE_CTRL_LINE_STATUS_REPORT_MASK = BIT(13),
+	UART_LINE_CTRL_CTS         = BIT(14),
+	/* Enable/disable rs485 mode */
+#ifdef CONFIG_UART_RS_485
+	UART_LINE_CTRL_RS_485      = BIT(15),
+#endif  /* CONFIG_UART_RS_485 */
+#ifdef CONFIG_UART_9_BIT
+	/* Enable/disable 9-bit mode */
+	UART_LINE_CTRL_9_BIT       = BIT(16),
+#endif  /* CONFIG_UART_9_BIT */
+
 };
 
 /**
@@ -249,6 +280,63 @@ struct uart_event {
 typedef void (*uart_callback_t)(const struct device *dev,
 				struct uart_event *evt, void *user_data);
 
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+typedef void (*uart_xfer_cb_t)(const struct device *port, int status,
+			       uint32_t line_err,
+			       int len);
+typedef void (*uart_unsol_rx_cb_t)(const struct device *port, void *param,
+				   int status, uint32_t line_err,  int len);
+
+struct uart_io_vec {
+	uint8_t *base;
+	uint32_t len;
+};
+#endif
+
+/**
+ * UART RS-485 transfer mode.
+ */
+typedef enum {
+	/** Full Duplex mode. */
+	UART_RS485_XFER_MODE_FULL_DUPLEX,
+
+	/** Software Controlled Half Duplex mode. */
+	UART_RS485_XFER_MODE_HALF_DUPLEX
+
+} uart_rs485_transfer_mode_t;
+
+/**$
+ *  UART RS-485 polarity for de and re signals.$
+ */
+typedef enum {
+	UART_RS485_POL_ACTIVE_LOW = 0,
+	UART_RS485_POL_ACTIVE_HIGH
+} uart_rs485_polarity_t;
+
+struct uart_rs_485_config {
+	/** de to re turnaround time in nanoseconds. */
+	uint32_t de_re_tat_ns;
+
+	/** re to de turnaround time in nanoseconds. */
+	uint32_t re_de_tat_ns;
+
+	/** Assertion time for DE in nanoseconds. */
+	uint32_t de_assertion_time_ns;
+
+	/** De-assertion time for DE in nanoseconds */
+	uint32_t de_deassertion_time_ns;
+
+	/** Transfer mode. 0: Full Duplex , 1:half duplex.*/
+	uart_rs485_transfer_mode_t transfer_mode : 1;
+
+	/** de polarity 0:active low , 1:active high. */
+	uart_rs485_polarity_t de_polarity : 1;
+
+	/** re polarity 0:active low , 1:active high. */
+	uart_rs485_polarity_t re_polarity : 1;
+};
+
+
 /**
  * @brief UART controller configuration structure
  *
@@ -344,7 +432,7 @@ struct uart_device_config {
 	uint32_t sys_clk_freq;
 
 #if defined(CONFIG_UART_INTERRUPT_DRIVEN) || defined(CONFIG_UART_ASYNC_API)
-	uart_irq_config_func_t	irq_config_func;
+	uart_irq_config_func_t irq_config_func;
 #endif
 };
 
@@ -379,6 +467,15 @@ __subsystem struct uart_driver_api {
 	int (*configure)(const struct device *dev,
 			 const struct uart_config *cfg);
 	int (*config_get)(const struct device *dev, struct uart_config *cfg);
+
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+	int (*write_buffer_polled)(const struct device *dev, uint8_t *buff,
+				   int32_t len);
+
+	int (*read_buffer_polled)(const struct device *dev, uint8_t *buff,
+				  int32_t len,
+				  uint32_t *line_status);
+#endif  /* CONFIG_BOARD_EHL_PSE_CRB */
 
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 
@@ -428,6 +525,39 @@ __subsystem struct uart_driver_api {
 				 uart_irq_callback_user_data_t cb,
 				 void *user_data);
 
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+	int (*write_buffer_async)(const struct device *dev, uint8_t *buff,
+				  uint32_t len,
+				  uart_xfer_cb_t xfer_cb);
+
+	int (*read_buffer_async)(const struct device *dev, uint8_t *buff,
+				 uint32_t len,
+				 uart_xfer_cb_t xfer_cb);
+
+	int (*read_buffer_sync)(const struct device *dev, uint8_t *buff,
+				int32_t len,
+				uint32_t timeout, uint32_t *status);
+
+	int (*enable_unsol_receive)(const struct device *dev, uint8_t *buff,
+				    int32_t len,
+				    uart_unsol_rx_cb_t cb, void *param);
+
+	int (*disable_unsol_receive)(const struct device *dev);
+
+	int (*get_unsol_data)(const struct device *dev, uint8_t *buff,
+			      int32_t len);
+
+	int (*get_unsol_data_len)(const struct device *dev, int *p_len);
+
+	int (*write_vec_async)(const struct device *dev,
+			       struct uart_io_vec *vec,
+			       uint32_t count, uart_xfer_cb_t xfer_cb);
+
+	int (*read_vec_async)(const struct device *dev, struct uart_io_vec *vec,
+			      uint32_t count, uart_xfer_cb_t xfer_cb);
+
+#endif  /* CONFIG_BOARD_EHL_PSE_CRB */
+
 #endif
 
 #ifdef CONFIG_UART_LINE_CTRL
@@ -440,6 +570,12 @@ __subsystem struct uart_driver_api {
 #ifdef CONFIG_UART_DRV_CMD
 	int (*drv_cmd)(const struct device *dev, uint32_t cmd, uint32_t p);
 #endif
+
+#ifdef CONFIG_UART_RS_485
+	int (*rs_485_config_set)(const struct device *dev,
+				 struct uart_rs_485_config
+				 *config);
+#endif  /* CONFIG_UART_RS_485*/
 
 };
 
@@ -465,7 +601,7 @@ static inline int uart_callback_set(const struct device *dev,
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-			(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	if (api->callback_set == NULL) {
 		return -ENOSYS;
@@ -503,7 +639,7 @@ static inline int z_impl_uart_tx(const struct device *dev, const uint8_t *buf,
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-			(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return api->tx(dev, buf, len, timeout);
 #else
@@ -529,7 +665,7 @@ static inline int z_impl_uart_tx_abort(const struct device *dev)
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-			(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return api->tx_abort(dev);
 #else
@@ -568,7 +704,7 @@ static inline int z_impl_uart_rx_enable(const struct device *dev,
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-				(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return api->rx_enable(dev, buf, len, timeout);
 #else
@@ -602,7 +738,7 @@ static inline int uart_rx_buf_rsp(const struct device *dev, uint8_t *buf,
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-				(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return api->rx_buf_rsp(dev, buf, len);
 #else
@@ -631,7 +767,7 @@ static inline int z_impl_uart_rx_disable(const struct device *dev)
 {
 #ifdef CONFIG_UART_ASYNC_API
 	const struct uart_driver_api *api =
-			(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	return api->rx_disable(dev);
 #else
@@ -704,10 +840,10 @@ static inline int z_impl_uart_poll_in(const struct device *dev,
  * @param out_char Character to send.
  */
 __syscall void uart_poll_out(const struct device *dev,
-				      unsigned char out_char);
+			     unsigned char out_char);
 
 static inline void z_impl_uart_poll_out(const struct device *dev,
-						unsigned char out_char)
+					unsigned char out_char)
 {
 	const struct uart_driver_api *api =
 		(const struct uart_driver_api *)dev->api;
@@ -735,7 +871,7 @@ static inline int z_impl_uart_configure(const struct device *dev,
 					const struct uart_config *cfg)
 {
 	const struct uart_driver_api *api =
-				(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	if (api->configure == NULL) {
 		return -ENOSYS;
@@ -762,7 +898,7 @@ static inline int z_impl_uart_config_get(const struct device *dev,
 					 struct uart_config *cfg)
 {
 	const struct uart_driver_api *api =
-				(const struct uart_driver_api *)dev->api;
+		(const struct uart_driver_api *)dev->api;
 
 	if (api->config_get == NULL) {
 		return -ENOSYS;
@@ -770,6 +906,79 @@ static inline int z_impl_uart_config_get(const struct device *dev,
 
 	return api->config_get(dev, cfg);
 }
+
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+/**
+ * @brief Polled read to a buffer.
+ *
+ * This routine is a blocking call for reading data into a buffer in polled
+ * mode for specified length. The call returns the length of data read if no
+ * errors occur during read. In case of error, a negative error is returned.
+ * The line status is populated with the respective line error if error is due
+ * to a uart receive line error.
+ *
+ * Note: When enabling DMA for transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff  Buffer to which data is to be read.
+ * @len length to be read.
+ * @line_status pointer to u32_t populated with line status.
+ *
+ * @retval negative if error was detected in read.
+ *
+ * @retval length of data read.
+ */
+__syscall int uart_read_buffer_polled(const struct device *dev, uint8_t *buff,
+				      int32_t len, uint32_t *line_status);
+
+static inline int z_impl_uart_read_buffer_polled(const struct device *dev,
+						 uint8_t *buff,
+						 int32_t len,
+						 uint32_t *line_status)
+{
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api->read_buffer_polled) {
+		return api->read_buffer_polled(dev, buff, len, line_status);
+	}
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Polled write from buffer.
+ *
+ * This routine is a blocking call for writing data from a buffer in polled
+ * mode for specified length. The call returns the length of data written if no
+ * errors occur during write. Otherwise a negative error is returned.
+ *
+ * Note: When enabling DMA for transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff  buffer to which data is to be written.
+ * @len length of data to be written.
+ *
+ * @retval negative if error was detected during write.
+ *
+ * @retval length of data written.
+ */
+__syscall int uart_write_buffer_polled(const struct device *dev, uint8_t *buff,
+				       int32_t len);
+
+static inline int z_impl_uart_write_buffer_polled(const struct device *dev,
+						  uint8_t *buff, int32_t len)
+{
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api->write_buffer_polled) {
+		return api->write_buffer_polled(dev, buff, len);
+	}
+	return -ENOTSUP;
+}
+#endif
 
 /**
  * @brief Fill FIFO with data.
@@ -1158,9 +1367,11 @@ static inline int z_impl_uart_irq_update(const struct device *dev)
  *
  * @return N/A
  */
-static inline void uart_irq_callback_user_data_set(const struct device *dev,
-						   uart_irq_callback_user_data_t cb,
-						   void *user_data)
+static inline void uart_irq_callback_user_data_set(
+	const struct device *dev,
+	uart_irq_callback_user_data_t
+	cb,
+	void *user_data)
 {
 #ifdef CONFIG_UART_INTERRUPT_DRIVEN
 	const struct uart_driver_api *api =
@@ -1189,6 +1400,364 @@ static inline void uart_irq_callback_set(const struct device *dev,
 	uart_irq_callback_user_data_set(dev, cb, NULL);
 }
 
+#ifdef CONFIG_BOARD_EHL_PSE_CRB
+/**
+ * @brief Asynchronous write on UART device.
+ *
+ * @details Does and asynchronous write on specified uart device.
+ * On completion of the write operation , registered transfer callback
+ * is called.This is a non-blocking call. Users should clear any prior
+ * registered irq handlers for uart using uart_irq_callback_set before
+ * calling this API.
+ *
+ * Note: When enabling DMA for asynchronous transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff Buffer from which data is to be written.Pointer to the callback
+ * function.
+ * @param len  Length of the data to be written.
+ * @param xfer_cb Transfer callback to be triggered on completion of write or
+ * error.
+ *
+ * @retval 0 If write request was successful.
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EINVAL If the supplied parameters are invalid.
+ * @retval -EBUSY If the device is busy.
+ */
+__syscall int uart_write_async(const struct device *dev, uint8_t *buff,
+			       uint32_t len, uart_xfer_cb_t xfer_cb);
+
+static inline int z_impl_uart_write_async(const struct device *dev,
+					  uint8_t *buff,
+					  uint32_t len,
+					  uart_xfer_cb_t xfer_cb)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->write_buffer_async != NULL) {
+		return api->write_buffer_async(dev, buff, len, xfer_cb);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Asynchronous read on UART device.
+ *
+ * Does and asynchronous read on specified uart device.
+ * On completion of the read the registered transfer callback
+ * is called. This is a non-blocking call.Users should clear any prior
+ * registered irq handlers for uart set by uart_irq_callback_set before
+ * calling this API.
+ *
+ * Note: When enabling DMA for asynchronous transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff Buffer to which data would be read into.
+ * @param len  Length of the data to be read.
+ * @param xfer_cb Transfer callback to be triggered on completion of read or
+ * error.
+ *
+ * @retval 0 If read request was successful.
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EINVAL If the supplied parameters are invalid.
+ * @retval -EBUSY If the device is busy.
+ */
+__syscall int uart_read_async(const struct device *dev, uint8_t *buff,
+			      uint32_t len, uart_xfer_cb_t xfer_cb);
+
+static inline int z_impl_uart_read_async(const struct device *dev,
+					 uint8_t *buff,
+					 uint32_t len,
+					 uart_xfer_cb_t xfer_cb)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->read_buffer_async != NULL) {
+		return api->read_buffer_async(dev, buff, len, xfer_cb);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Synchronous read with timeout on UART device.
+ *
+ * @details Does a synchronous read with give timeout on UART device.
+ * This is a blocking call and returns only when the read is completed or an
+ * error condition occurs.Users should clear any prior
+ * registered irq handlers for uart set by uart_irq_callback_set before
+ * calling this API.
+ *
+ * Note: When enabling DMA for transfers, input buffer must be
+ * 32 byte aligned and size of buffer must be on a 32-byte boundary.
+ *
+ * @param dev UART device structure.
+ * @param buff Buffer to which data would be read into.
+ * @param len  Length of the data to be read.
+ * @param timeout Timeout for the read operation in milliseconds.
+ *
+ * @retval  Length of the data bytes read successfully.
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EINVAL If the supplied parameters are invalid.
+ * @retval -EBUSY If the device is busy.
+ * @retval -ETIMEDOUT If a timeout occurred.
+ * @retval -EIO Read error occurred.
+ */
+__syscall int uart_read_sync(const struct device *dev, uint8_t *buff,
+			     int32_t len, uint32_t timeout, uint32_t *status);
+
+static inline int z_impl_uart_read_sync(const struct device *dev,
+					uint8_t *buff,
+					int32_t len,
+					uint32_t timeout,
+					uint32_t *status)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->read_buffer_sync != NULL) {
+		return api->read_buffer_sync(dev, buff, len, timeout, status);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Vectored asynchronous read on UART device.
+ *
+ * @details Does a asynchronous read using non-contiguous buffers specified
+ * by the vec parameter on UART device.This is a non-blocking call and triggers
+ * user callback only after all the read transfers are completed or an error is
+ * detected.On detecting an error, user callback is called and the len field
+ * indicates the count of the transfer where error occurred.Users should clear
+ * any prior registered irq handlers for uart using uart_irq_callback_set
+ * before calling this API.
+ *
+ * @param dev UART device structure.
+ * @param vec pointer to an array of struct uart_io_vec which contains the
+ * buffer and length of each transfer.
+ * @param count  Number of read transfers requested from the vector.
+ * @param callback Callback to be called when all read transfers are completed
+ * or when an error is detected.
+ *
+ * @retval  0 if the request was successful.
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EINVAL If the supplied parameters are invalid.
+ * @retval -EBUSY If the device is busy.
+ */
+__syscall int uart_read_vec_async(const struct device *dev,
+				  struct uart_io_vec *vec,
+				  uint32_t count,
+				  uart_xfer_cb_t xfer_cb);
+
+static inline int z_impl_uart_read_vec_async(const struct device *dev,
+					     struct uart_io_vec *vec,
+					     uint32_t count,
+					     uart_xfer_cb_t xfer_cb)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->read_vec_async != NULL) {
+		return api->read_vec_async(dev, vec, count, xfer_cb);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Vectored asynchronous write on UART device.
+ *
+ * @details Does a asynchronous write using non-contiguous buffers specified
+ * by the vec parameter on UART device.This is a non-blocking call and triggers
+ * user callback only after all the write transfers are completed or an error
+ * is detected.On detecting an error, user callback is called and the len field
+ * indicates the count of the transfer where error occurred.Users should clear
+ * any prior registered irq handlers for uart using uart_irq_callback_set
+ * before calling this API.
+ *
+ * @param dev UART device structure.
+ * @param vec pointer to an array of struct uart_io_vec which contains the
+ * buffer and length of each transfer.
+ * @param count  Number of write transfers requested from the vector.
+ * @param callback Callback to be called when all write transfers are completed
+ * or when an error is detected.
+ *
+ * @retval  0 if the request was successful.
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EINVAL If the supplied parameters are invalid.
+ * @retval -EBUSY If the device is busy.
+ */
+__syscall int uart_write_vec_async(const struct device *dev,
+				   struct uart_io_vec *vec,
+				   uint32_t count,
+				   uart_xfer_cb_t xfer_cb);
+
+static inline int z_impl_uart_write_vec_async(const struct device *dev,
+					      struct uart_io_vec *vec,
+					      uint32_t count,
+					      uart_xfer_cb_t xfer_cb)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->write_vec_async != NULL) {
+		return api->write_vec_async(dev, vec, count, xfer_cb);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Enable unsolicited receive on UART device.
+ *
+ * @details Enables receiving unsolicited data into the buffer specified.User
+ * callback is called whenever any data is received on the uart device and also
+ * indicates the length of unread data in the buffer. The buffer provided for
+ * enabling unsolicited read is maintained as a circular buffer such that the
+ * oldest data in the buffer gets overwritten when data exceeds the buffer
+ * length. Users can read data from the unsolicited data buffer to any other
+ * buffer by calling uart_get_unsol_data.
+ * The buffer provided should be valid until unsolicited receive is disabled.
+ * Users should clear any prior registered irq handlers for uart set by
+ * uart_irq_callback_set before calling this API.
+ *
+ * Read APIs, polled or asynchronous are not supported for the uart device when
+ * unsolicited receive is active.
+ *
+ * @param dev UART device structure.
+ * @param buff Buffer to which unsolicited data would be read.
+ * @param size Size of the data buffer.
+ * @param cb Callback to be called when data is received.
+ * @param usr_param Parameter passed in callback.
+ *
+ * @retval -ENOTSUP If the function is not supported.
+ * @retval -EIO Error occurred.
+ * @retval -EBUSY if the device is busy.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_enable_unsol_receive(const struct device *dev, uint8_t *buff,
+					int32_t size, uart_unsol_rx_cb_t cb,
+					void *usr_param);
+
+static inline int z_impl_uart_enable_unsol_receive(const struct device *dev,
+						   uint8_t *buff, int32_t size,
+						   uart_unsol_rx_cb_t cb,
+						   void *usr_param)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->enable_unsol_receive != NULL) {
+		return api->enable_unsol_receive(dev, buff, size,
+						 cb, usr_param);
+	}
+#endif
+	return -ENOTSUP;
+}
+
+/**
+ * @brief Disable unsolicited receive on UART device.
+ *
+ * @details Disables unsolicited receive for specified uart device.
+ *
+ * @param dev UART device structure.
+ *
+ * @retval -EIO Error occurred.
+ * @retval 0 If request was successful.
+ * @retval -ENOTSUP if the function is not supported.
+ */
+__syscall int uart_disable_unsol_receive(const struct device *dev);
+
+static inline int z_impl_uart_disable_unsol_receive(const struct device *dev)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->disable_unsol_receive != NULL) {
+		return api->disable_unsol_receive(dev);
+	}
+#endif
+	return -ENOTSUP;
+
+}
+
+/**
+ * @brief Get data from unsolicited receive buffer.
+ *
+ * @details Copies data from the unsolicited receive buffer to the use specified
+ * It can be called from the unsolicited callback handler to retrieve
+ * accumulated data
+ *
+ * @param dev UART device structure.
+ * @param buff buffer to which data is to be copied.
+ * @param len length of data which is to be copied from the unsolicited receive
+ * buffer.
+
+ * @retval -EIO Error occurred.
+ * @retval -ENOTSUP if the function is not supported.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_get_unsol_data(const struct device *dev, uint8_t *buff,
+				  int32_t len);
+static inline int z_impl_uart_get_unsol_data(const struct device *dev,
+					     uint8_t *buff,
+					     int32_t len)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->get_unsol_data != NULL) {
+		return api->get_unsol_data(dev, buff, len);
+	}
+#endif
+	return -ENOTSUP;
+
+}
+
+/**
+ * @brief Get length of  data in unsolicited receive buffer.
+ *
+ * @details Returns current length of data in unsolicited receive buffer.
+ *
+ *
+ * @param dev UART device structure.
+ * @param p_len pointer to int to be populated with length of buffer.
+
+ * @retval -EIO Error occurred.
+ * @retval -ENOTSUP if the function is not supported.
+ * @retval 0 If request was successful.
+ */
+__syscall int uart_get_unsol_data_len(const struct device *dev, int32_t *p_len);
+
+static inline int z_impl_uart_get_unsol_data_len(const struct device *dev,
+						 int32_t *p_len)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api != NULL && api->get_unsol_data != NULL) {
+		return api->get_unsol_data_len(dev, p_len);
+	}
+#endif
+	return -ENOTSUP;
+
+}
+#endif  /* CONFIG_BOARD_EHL_PSE_CRB */
 
 /**
  * @brief Manipulate line control for UART.
@@ -1284,6 +1853,27 @@ static inline int z_impl_uart_drv_cmd(const struct device *dev, uint32_t cmd,
 
 	return -ENOTSUP;
 }
+
+#ifdef CONFIG_UART_RS_485
+__syscall int uart_rs_485_config_set(const struct device *dev,
+				     struct uart_rs_485_config *config);
+static inline int z_impl_uart_rs_485_config_set(
+	const struct device *dev,
+	struct uart_rs_485_config *
+	config)
+{
+	const struct uart_driver_api *api =
+		(const struct uart_driver_api *)dev->api;
+
+	if (api->rs_485_config_set) {
+		return api->rs_485_config_set(dev, config);
+	}
+
+	return -ENOTSUP;
+}
+#endif /* CONFIG_UART_RS_485 */
+
+
 
 #ifdef __cplusplus
 }
