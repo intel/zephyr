@@ -23,9 +23,13 @@ LOG_MODULE_REGISTER(i2c_mchp, CONFIG_I2C_LOG_LEVEL);
 #define RESET_WAIT_US		20
 #define BUS_IDLE_US_DFLT	5
 
-/* I2C timeout is  10 ms (WAIT_INTERVAL * WAIT_COUNT) */
+/* I2C timeout is 10 ms (WAIT_INTERVAL * WAIT_COUNT) */
 #define WAIT_INTERVAL		50
 #define WAIT_COUNT		200
+
+/* Line High Timeout is 2.5 ms (WAIT_LINE_HIGH_USEC * WAIT_LINE_HIGH_COUNT) */
+#define WAIT_LINE_HIGH_USEC	25
+#define WAIT_LINE_HIGH_COUNT	100
 
 /* I2C Read/Write bit pos */
 #define I2C_READ_WRITE_POS  0
@@ -57,6 +61,7 @@ struct i2c_xec_config {
 
 struct i2c_xec_data {
 	uint32_t pending_stop;
+	uint32_t error_seen;
 	uint32_t speed_id;
 	const struct device *sda_gpio;
 	const struct device *scl_gpio;
@@ -282,7 +287,6 @@ static int wait_completion(const struct device *dev)
 
 		ret = xec_spin_yield(&counter);
 		if (ret < 0) {
-			recover_from_error(dev);
 			return ret;
 		}
 	}
@@ -303,6 +307,7 @@ static bool check_lines_high(const struct device *dev)
 	gpio_port_value_t sda = 0, scl = 0;
 
 	if (gpio_port_get_raw(data->sda_gpio, &sda)) {
+		LOG_DBG("gpio_port_get_raw for %s SDA failed", dev->name);
 		return false;
 	}
 
@@ -315,6 +320,8 @@ static bool check_lines_high(const struct device *dev)
 		scl = sda;
 	} else {
 		if (gpio_port_get_raw(data->scl_gpio, &scl)) {
+			LOG_DBG("gpio_port_get_raw for %s SCL failed",
+				dev->name);
 			return false;
 		}
 	}
@@ -367,17 +374,35 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 	struct i2c_xec_data *data =
 		(struct i2c_xec_data *const) (dev->data);
 	uint32_t ba = config->base_addr;
+	uint8_t i2c_timer = 0;
 	int ret;
 
-	if (data->pending_stop == 0) {
-		/* Check clock and data lines for HIGH */
-		if (check_lines_high(dev) == false) {
-			return -EBUSY;
+	if ((data->pending_stop == 0) || (data->error_seen == 1)) {
+		/* Wait till clock and data lines are HIGH */
+		while (check_lines_high(dev) == false) {
+			if (i2c_timer >= WAIT_LINE_HIGH_COUNT) {
+				LOG_DBG("%s: %s not high",
+					__func__, dev->name);
+				data->error_seen = 1;
+				return -EBUSY;
+			}
+			k_busy_wait(WAIT_LINE_HIGH_USEC);
+			i2c_timer++;
+		}
+
+		if (data->error_seen) {
+			LOG_DBG("%s: Recovering %s previously in error",
+				__func__, dev->name);
+			data->error_seen = 0;
+			recover_from_error(dev);
 		}
 
 		/* Wait until bus is free */
 		ret = wait_bus_free(dev);
 		if (ret) {
+			data->error_seen = 1;
+			LOG_DBG("%s: %s wait_bus_free failure",
+				__func__, dev->name);
 			return ret;
 		}
 
@@ -391,6 +416,9 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 
 		ret = wait_completion(dev);
 		if (ret) {
+			data->error_seen = 1;
+			LOG_DBG("%s: %s wait_completion error for address send",
+				__func__, dev->name);
 			return ret;
 		}
 	}
@@ -400,6 +428,9 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 		MCHP_I2C_SMB_DATA(ba) = msg.buf[i];
 		ret = wait_completion(dev);
 		if (ret) {
+			data->error_seen = 1;
+			LOG_DBG("%s: %s wait_completion error for data send",
+				__func__, dev->name);
 			return ret;
 		}
 
@@ -430,18 +461,35 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 	struct i2c_xec_data *data =
 		(struct i2c_xec_data *const) (dev->data);
 	uint32_t ba = config->base_addr;
-	uint8_t byte, ctrl;
+	uint8_t byte, ctrl, i2c_timer = 0;
 	int ret;
 
-	if (!(msg.flags & I2C_MSG_RESTART)) {
-		/* Check clock and data lines for HIGH */
-		if (check_lines_high(dev) == false) {
-			return -EBUSY;
+	if (!(msg.flags & I2C_MSG_RESTART) || (data->error_seen == 1)) {
+		/* Wait till clock and data lines are HIGH */
+		while (check_lines_high(dev) == false) {
+			if (i2c_timer >= WAIT_LINE_HIGH_COUNT) {
+				LOG_DBG("%s: %s not high",
+					__func__, dev->name);
+				data->error_seen = 1;
+				return -EBUSY;
+			}
+			k_busy_wait(WAIT_LINE_HIGH_USEC);
+			i2c_timer++;
+		}
+
+		if (data->error_seen) {
+			LOG_DBG("%s: Recovering %s previously in error",
+				__func__, dev->name);
+			data->error_seen = 0;
+			recover_from_error(dev);
 		}
 
 		/* Wait until bus is free */
 		ret = wait_bus_free(dev);
 		if (ret) {
+			data->error_seen = 1;
+			LOG_DBG("%s: %s wait_bus_free failure",
+				__func__, dev->name);
 			return ret;
 		}
 	}
@@ -457,6 +505,9 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 
 	ret = wait_completion(dev);
 	if (ret) {
+		data->error_seen = 1;
+		LOG_DBG("%s: %s wait_completion error for address send",
+			__func__, dev->name);
 		return ret;
 	}
 
@@ -469,6 +520,9 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 	byte = MCHP_I2C_SMB_DATA(ba);
 	ret = wait_completion(dev);
 	if (ret) {
+		data->error_seen = 1;
+		LOG_DBG("%s: %s wait_completion error for dummy byte",
+			__func__, dev->name);
 		return ret;
 	}
 
@@ -509,7 +563,7 @@ static int i2c_xec_transfer(const struct device *dev, struct i2c_msg *msgs,
 	struct i2c_xec_data *data = dev->data;
 
 	if (data->slave_attached) {
-		LOG_ERR("Device is registered as slave");
+		LOG_ERR("%s Device is registered as slave", dev->name);
 		return -EBUSY;
 	}
 #endif
@@ -519,13 +573,13 @@ static int i2c_xec_transfer(const struct device *dev, struct i2c_msg *msgs,
 		if ((msgs[i].flags & I2C_MSG_RW_MASK) == I2C_MSG_WRITE) {
 			ret = i2c_xec_poll_write(dev, msgs[i], addr);
 			if (ret) {
-				LOG_ERR("Write error: %d", ret);
+				LOG_ERR("%s Write error: %d", dev->name, ret);
 				return ret;
 			}
 		} else {
 			ret = i2c_xec_poll_read(dev, msgs[i], addr);
 			if (ret) {
-				LOG_ERR("Read error: %d", ret);
+				LOG_ERR("%s Read error: %d", dev->name, ret);
 				return ret;
 			}
 		}
@@ -704,13 +758,13 @@ static int i2c_xec_init(const struct device *dev)
 
 	data->sda_gpio = device_get_binding(cfg->sda_gpio_label);
 	if (!data->sda_gpio) {
-		LOG_ERR("i2c configure failed to bind SDA GPIO");
+		LOG_ERR("%s configure failed to bind SDA GPIO", dev->name);
 		return -ENXIO;
 	}
 
 	data->scl_gpio = device_get_binding(cfg->scl_gpio_label);
 	if (!data->scl_gpio) {
-		LOG_ERR("i2c configure failed to bind SCL GPIO");
+		LOG_ERR("%s configure failed to bind SCL GPIO", dev->name);
 		return -ENXIO;
 	}
 
@@ -719,7 +773,7 @@ static int i2c_xec_init(const struct device *dev)
 				I2C_MODE_MASTER |
 				I2C_SPEED_SET(I2C_SPEED_STANDARD));
 	if (ret) {
-		LOG_ERR("i2c configure failed %d", ret);
+		LOG_ERR("%s configure failed %d", dev->name, ret);
 		return ret;
 	}
 
