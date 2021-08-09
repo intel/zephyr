@@ -10,6 +10,7 @@
 #include <kernel.h>
 #include <soc.h>
 #include <errno.h>
+#include <drivers/gpio.h>
 #include <drivers/i2c.h>
 #include <logging/log.h>
 LOG_MODULE_REGISTER(i2c_mchp, CONFIG_I2C_LOG_LEVEL);
@@ -28,6 +29,11 @@ LOG_MODULE_REGISTER(i2c_mchp, CONFIG_I2C_LOG_LEVEL);
 /* I2C Read/Write bit pos */
 #define I2C_READ_WRITE_POS  0
 
+/* lines */
+#define I2C_LINES_SCL_HI	BIT(0)
+#define I2C_LINES_SDA_HI	BIT(1)
+#define I2C_LINES_BOTH_HI	(I2C_LINES_SCL_HI | I2C_LINES_SDA_HI)
+
 struct xec_speed_cfg {
 	uint32_t bus_clk;
 	uint32_t data_timing;
@@ -41,12 +47,18 @@ struct i2c_xec_config {
 	uint32_t base_addr;
 	uint8_t girq_id;
 	uint8_t girq_bit;
+	uint8_t sda_pos;
+	uint8_t scl_pos;
+	const char *sda_gpio_label;
+	const char *scl_gpio_label;
 	void (*irq_config_func)(void);
 };
 
 struct i2c_xec_data {
 	uint32_t pending_stop;
 	uint32_t speed_id;
+	const struct device *sda_gpio;
+	const struct device *scl_gpio;
 	struct i2c_slave_config *slave_cfg;
 	bool slave_attached;
 	bool slave_read;
@@ -243,10 +255,40 @@ static int wait_completion(const struct device *dev)
 	return 0;
 }
 
-static bool check_lines(uint32_t ba)
+/*
+ * Call GPIO driver to read state of pins.
+ * Return boolean true if both lines HIGH else return boolean false
+ */
+static bool check_lines_high(const struct device *dev)
 {
-	return ((!(MCHP_I2C_SMB_BB_CTRL(ba) & MCHP_I2C_SMB_BB_CLKI_RO)) ||
-		(!(MCHP_I2C_SMB_BB_CTRL(ba) & MCHP_I2C_SMB_BB_DATI_RO)));
+	const struct i2c_xec_config *config =
+		(const struct i2c_xec_config *const)(dev->config);
+	struct i2c_xec_data *data = (struct i2c_xec_data *const)(dev->data);
+	uint32_t i2c_lines = 0U;
+	gpio_port_value_t sda = 0, scl = 0;
+
+	if (gpio_port_get_raw(data->sda_gpio, &sda)) {
+		return false;
+	}
+
+	if (sda & BIT(config->sda_pos)) {
+		i2c_lines |= I2C_LINES_SDA_HI;
+	}
+
+	/* both pins on same GPIO port? */
+	if (data->sda_gpio == data->scl_gpio) {
+		scl = sda;
+	} else {
+		if (gpio_port_get_raw(data->scl_gpio, &scl)) {
+			return false;
+		}
+	}
+
+	if (scl & BIT(config->scl_pos)) {
+		i2c_lines |= I2C_LINES_SCL_HI;
+	}
+
+	return (i2c_lines == I2C_LINES_BOTH_HI) ? true : false;
 }
 
 static int i2c_xec_configure(const struct device *dev,
@@ -293,8 +335,8 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 	int ret;
 
 	if (data->pending_stop == 0) {
-		/* Check clock and data lines */
-		if (check_lines(ba)) {
+		/* Check clock and data lines for HIGH */
+		if (check_lines_high(dev) == false) {
 			return -EBUSY;
 		}
 
@@ -357,8 +399,8 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 	int ret;
 
 	if (!(msg.flags & I2C_MSG_RESTART)) {
-		/* Check clock and data lines */
-		if (check_lines(ba)) {
+		/* Check clock and data lines for HIGH */
+		if (check_lines_high(dev) == false) {
 			return -EBUSY;
 		}
 
@@ -617,12 +659,25 @@ static const struct i2c_driver_api i2c_xec_driver_api = {
 
 static int i2c_xec_init(const struct device *dev)
 {
+	const struct i2c_xec_config *cfg = dev->config;
 	struct i2c_xec_data *data =
 		(struct i2c_xec_data *const) (dev->data);
 	int ret;
 
 	data->pending_stop = 0;
 	data->slave_attached = false;
+
+	data->sda_gpio = device_get_binding(cfg->sda_gpio_label);
+	if (!data->sda_gpio) {
+		LOG_ERR("i2c configure failed to bind SDA GPIO");
+		return -ENXIO;
+	}
+
+	data->scl_gpio = device_get_binding(cfg->scl_gpio_label);
+	if (!data->scl_gpio) {
+		LOG_ERR("i2c configure failed to bind SCL GPIO");
+		return -ENXIO;
+	}
 
 	/* Default configuration */
 	ret = i2c_xec_configure(dev,
@@ -652,6 +707,10 @@ static int i2c_xec_init(const struct device *dev)
 		.port_sel = DT_INST_PROP(n, port_sel),			\
 		.girq_id = DT_INST_PROP(n, girq),			\
 		.girq_bit = DT_INST_PROP(n, girq_bit),			\
+		.sda_pos = DT_INST_GPIO_PIN(n, sda_gpios),		\
+		.scl_pos = DT_INST_GPIO_PIN(n, scl_gpios),		\
+		.sda_gpio_label = DT_INST_GPIO_LABEL(n, sda_gpios),	\
+		.scl_gpio_label = DT_INST_GPIO_LABEL(n, scl_gpios),	\
 		.irq_config_func = i2c_xec_irq_config_func_##n,		\
 	};								\
 	DEVICE_DT_INST_DEFINE(n, &i2c_xec_init, NULL,			\
