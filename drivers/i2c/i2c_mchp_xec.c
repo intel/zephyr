@@ -416,9 +416,18 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 
 		ret = wait_completion(dev);
 		if (ret) {
-			data->error_seen = 1;
-			LOG_DBG("%s: %s wait_completion error for address send",
-				__func__, dev->name);
+			switch (ret) {
+			case -EIO:
+				LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
+					__func__, addr >> 1, dev->name);
+				break;
+
+			default:
+				data->error_seen = 1;
+				LOG_DBG("%s: %s wait_comp error for addr send",
+					__func__, dev->name);
+				break;
+			}
 			return ret;
 		}
 	}
@@ -428,9 +437,18 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 		MCHP_I2C_SMB_DATA(ba) = msg.buf[i];
 		ret = wait_completion(dev);
 		if (ret) {
-			data->error_seen = 1;
-			LOG_DBG("%s: %s wait_completion error for data send",
-				__func__, dev->name);
+			switch (ret) {
+			case -EIO:
+				LOG_DBG("%s: No Data ACK from Slave 0x%x on %s",
+					__func__, addr >> 1, dev->name);
+				break;
+
+			default:
+				data->error_seen = 1;
+				LOG_DBG("%s: %s wait_completion error for data send",
+					__func__, dev->name);
+				break;
+			}
 			return ret;
 		}
 
@@ -505,9 +523,18 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 
 	ret = wait_completion(dev);
 	if (ret) {
-		data->error_seen = 1;
-		LOG_DBG("%s: %s wait_completion error for address send",
-			__func__, dev->name);
+		switch (ret) {
+		case -EIO:
+			LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			break;
+
+		default:
+			data->error_seen = 1;
+			LOG_DBG("%s: %s wait_completion error for address send",
+				__func__, dev->name);
+			break;
+		}
 		return ret;
 	}
 
