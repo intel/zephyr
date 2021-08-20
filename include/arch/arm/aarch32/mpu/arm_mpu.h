@@ -41,7 +41,7 @@ struct arm_mpu_config {
 	/* Number of regions */
 	uint32_t num_regions;
 	/* Regions */
-	const struct arm_mpu_region *mpu_regions;
+	struct arm_mpu_region *mpu_regions;
 };
 
 #if defined(CONFIG_CPU_CORTEX_R)
@@ -69,7 +69,7 @@ struct arm_mpu_config {
  * for Thread Stack, Stack Guards, etc.) are programmed during runtime, thus,
  * not kept here.
  */
-extern const struct arm_mpu_config mpu_config;
+extern struct arm_mpu_config mpu_config;
 
 #endif /* _ASMLANGUAGE */
 
