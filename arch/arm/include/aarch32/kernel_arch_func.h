@@ -36,6 +36,8 @@ extern void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread);
 extern int z_arm_mpu_init(void);
 #endif /* CONFIG_ARM_MPU */
 
+int mpu_config_init(void);
+
 static ALWAYS_INLINE void arch_kernel_init(void)
 {
 	z_arm_interrupt_stack_setup();
@@ -44,6 +46,7 @@ static ALWAYS_INLINE void arch_kernel_init(void)
 	z_arm_cpu_idle_init();
 	z_arm_clear_faults();
 #if defined(CONFIG_ARM_MPU)
+	mpu_config_init();
 	z_arm_mpu_init();
 	/* Configure static memory map. This will program MPU regions,
 	 * to set up access permissions for fixed memory sections, such
