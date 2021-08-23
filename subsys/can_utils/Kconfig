@@ -1,0 +1,41 @@
+# Kconfig - CANUTILS configuration options
+#
+# Copyright (c) 2021 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+menu "Can_utils"
+
+menuconfig CANUTLS
+	bool "Enable CAN UTILS feature"
+	select CAN_UTILS
+
+config CAN_UTILS
+	bool "CAN utils feature"
+	select CAN
+	select CAN_IOCTL
+	select NETWORKING
+	select NET_SOCKETS
+	select NET_SOCKETS_CAN
+	select LOG
+	select LOG_IMMEDIATE
+	select NET_SOCKETS_CAN_ERR_FILTER
+	select CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+	select CONFIG_NET_DEFAULT_IF_CANBUS
+	help
+	  This option enables CAN utils apis.
+
+config CAN_UTILS_DEBUG
+	bool "Enable debug logs from can utils"
+	help
+	  Enable debug logs from can utils
+
+config LIB_DEBUG_ENABLE
+	bool "Extended debug for utils lib"
+	default n
+	help
+	  This option enables debug for internal utils lib
+
+endmenu
+

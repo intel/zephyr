@@ -1,0 +1,14 @@
+# Copyright (c) 2021 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
+common:
+  tags: can utils CAN
+  depends_on: socket can
+sample:
+  description: CAN utils apis test
+  name: CAN utils example
+tests:
+  sample.net.can.utils:
+    platform_whitelist: intel_ehl_crb
+
