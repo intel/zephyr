@@ -25,6 +25,7 @@ config CAN_SHELL
 	  Enable CAN Shell for testing.
 
 config CAN_HAS_CANFD
+	prompt "CAN HAS FD"
 	bool
 	help
 	  driver supports CAN-FD

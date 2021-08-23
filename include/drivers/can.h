@@ -263,7 +263,8 @@ struct zcan_frame {
 	/** The frame payload data. */
 	union {
 		uint8_t data[CAN_MAX_DLEN];
-		uint32_t data_32[ceiling_fraction(CAN_MAX_DLEN, sizeof(uint32_t))];
+		uint32_t data_32[ceiling_fraction(CAN_MAX_DLEN,
+						  sizeof(uint32_t))];
 	};
 };
 
@@ -542,14 +543,18 @@ static inline int z_impl_can_send(const struct device *dev,
 #if defined(CONFIG_CAN_IOCTL)
 __syscall int can_ioctl(const struct device *dev, uint32_t cmd, void *arg);
 
-static inline int z_impl_can_ioctl(const struct device *dev, uint32_t cmd, void *arg)
+static inline int z_impl_can_ioctl(const struct device *dev,
+				   uint32_t cmd,
+				   void *arg)
 {
 	const struct can_driver_api *api = dev->api;
 
 	return api->ioctl(dev, cmd, arg);
 }
 #else
-static inline int z_impl_can_ioctl(const struct device *dev, uint32_t cmd, void *arg)
+static inline int z_impl_can_ioctl(const struct device *dev,
+				   uint32_t cmd,
+				   void *arg)
 {
 	return 0;
 }

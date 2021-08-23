@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Intel Corporation.
+ * Copyright (c) 2021 Intel Corporation.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,6 +20,9 @@
 #define RX_THREAD_STACK_SIZE 512
 #define RX_THREAD_PRIORITY 2
 #define BUF_ALLOC_TIMEOUT K_MSEC(50)
+#if defined(CONFIG_CAN_UTILS)
+#define DEFAULT_CAN_DEV_ADDR (0x10)
+#endif
 
 /* TODO: make msgq size configurable */
 CAN_DEFINE_MSGQ(socket_can_msgq, 5);
@@ -44,8 +47,13 @@ static inline void socket_can_iface_init(struct net_if *iface)
 	const struct device *dev = net_if_get_device(iface);
 	struct socket_can_context *socket_context = dev->data;
 
-	socket_context->iface = iface;
+#if defined(CONFIG_CAN_UTILS)
+	uint8_t addr;
 
+	addr = DEFAULT_CAN_DEV_ADDR;
+	net_if_set_link_addr(iface, &addr, sizeof(uint8_t), NET_LINK_CANBUS);
+#endif
+	socket_context->iface = iface;
 	LOG_DBG("Init CAN interface %p dev %p", iface, dev);
 }
 
