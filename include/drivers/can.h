@@ -34,7 +34,11 @@ extern "C" {
 #define CAN_STD_ID_MASK CAN_MAX_STD_ID
 #define CAN_EXT_ID_MASK (0x1FFFFFFF)
 #define CAN_MAX_DLC    (8)
+
+#if defined(CONFIG_CAN_FD_MODE)
 #define CANFD_MAX_DLC  CONFIG_CANFD_MAX_DLC
+#endif
+
 #ifndef CONFIG_CANFD_MAX_DLC
 #define CAN_MAX_DLEN    8
 #else
@@ -577,7 +581,11 @@ static inline int can_write(const struct device *dev, const uint8_t *data,
 {
 	struct zcan_frame msg;
 
+#if defined(CONFIG_CAN_FD_MODE)
 	if (length > CANFD_MAX_DLC) {
+#else
+	if (length > CAN_MAX_DLC) {
+#endif
 		return -EINVAL;
 	}
 
