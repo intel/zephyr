@@ -49,6 +49,16 @@ config FS_FATFS_EXFAT
 	help
 	  Enable the exFAT format support for FatFs.
 
+config FS_FATFS_FORMAT_OPTION
+	hex "Format options for formating volume"
+	depends on FS_FATFS_MOUNT_MKFS
+	default 0x01
+	help
+	  Valid Format Options:
+	  FAT   0x01
+	  FAT32 0x02
+	  EXFAT 0x04
+
 config FS_FATFS_NUM_FILES
 	int "Maximum number of opened files"
 	default 4
