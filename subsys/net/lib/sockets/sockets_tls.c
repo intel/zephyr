@@ -1866,7 +1866,7 @@ static ssize_t recvfrom_dtls_server(struct tls_context *ctx, void *buf,
 				if (ret == 0) {
 					repeat = true;
 				} else {
-					ret = -ECONNABORTED;
+					ret = -ENOMEM;
 				}
 
 				continue;
@@ -1891,7 +1891,7 @@ static ssize_t recvfrom_dtls_server(struct tls_context *ctx, void *buf,
 			if (ret == 0) {
 				repeat = true;
 			} else {
-				ret = -ECONNABORTED;
+				ret = -ENOMEM;
 			}
 			break;
 
