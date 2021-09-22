@@ -589,6 +589,8 @@ foreach(d ${SYSCALL_INCLUDE_DIRS})
     )
 endforeach()
 
+set(extra_syscall_include_path ${ZEPHYR_BASE}/../ehl_pse-fw/services/sys_service/include)
+
 add_custom_command(
   OUTPUT
   ${syscalls_json}
@@ -600,6 +602,7 @@ add_custom_command(
    --include          ${ZEPHYR_BASE}/drivers        # For net sockets
    --include          ${ZEPHYR_BASE}/subsys/net     # More net sockets
   ${parse_syscalls_include_args}                    # Read files from these dirs also
+  --include ${extra_syscall_include_path}
   --json-file        ${syscalls_json}               # Write this file
   --tag-struct-file  ${struct_tags_json}            # Write subsystem list to this file
   DEPENDS ${syscalls_subdirs_trigger} ${PARSE_SYSCALLS_HEADER_DEPENDS}
