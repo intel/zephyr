@@ -208,10 +208,12 @@ ssize_t fs_read(struct fs_file_t *zfp, void *ptr, size_t size)
 		return -ENOTSUP;
 	}
 
+	k_mutex_lock(&mutex, K_FOREVER);
 	rc = zfp->mp->fs->read(zfp, ptr, size);
 	if (rc < 0) {
 		LOG_ERR("file read error (%d)", rc);
 	}
+	k_mutex_unlock(&mutex);
 
 	return rc;
 }
@@ -228,10 +230,12 @@ ssize_t fs_write(struct fs_file_t *zfp, const void *ptr, size_t size)
 		return -ENOTSUP;
 	}
 
+	k_mutex_lock(&mutex, K_FOREVER);
 	rc = zfp->mp->fs->write(zfp, ptr, size);
 	if (rc < 0) {
 		LOG_ERR("file write error (%d)", rc);
 	}
+	k_mutex_unlock(&mutex);
 
 	return rc;
 }
@@ -308,10 +312,12 @@ int fs_sync(struct fs_file_t *zfp)
 		return -ENOTSUP;
 	}
 
+	k_mutex_lock(&mutex, K_FOREVER);
 	rc = zfp->mp->fs->sync(zfp);
 	if (rc < 0) {
 		LOG_ERR("file sync error (%d)", rc);
 	}
+	k_mutex_unlock(&mutex);
 
 	return rc;
 }
