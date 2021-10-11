@@ -511,11 +511,15 @@ static void tcp_send_process(struct k_work *work)
 	struct tcp *conn = CONTAINER_OF(work, struct tcp, send_timer);
 	bool unref;
 
+	k_mutex_lock(&tcp_lock, K_FOREVER);
+
 	k_mutex_lock(&conn->lock, K_FOREVER);
 
 	unref = tcp_send_process_no_lock(conn);
 
 	k_mutex_unlock(&conn->lock);
+
+	k_mutex_unlock(&tcp_lock);
 
 	if (unref) {
 		tcp_conn_unref(conn);
