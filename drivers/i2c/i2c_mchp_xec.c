@@ -62,6 +62,8 @@ struct i2c_xec_config {
 struct i2c_xec_data {
 	uint32_t pending_stop;
 	uint32_t error_seen;
+	uint32_t timeout_seen;
+	uint32_t previously_in_read;
 	uint32_t speed_id;
 	const struct device *sda_gpio;
 	const struct device *scl_gpio;
@@ -199,7 +201,6 @@ static void recover_from_error(const struct device *dev)
 	cleanup_registers(ba);
 	i2c_xec_reset_config(dev);
 }
-
 
 static int wait_bus_free(const struct device *dev)
 {
@@ -374,8 +375,43 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 	struct i2c_xec_data *data =
 		(struct i2c_xec_data *const) (dev->data);
 	uint32_t ba = config->base_addr;
-	uint8_t i2c_timer = 0;
+	uint8_t i2c_timer = 0, byte;
 	int ret;
+
+	if (data->timeout_seen == 1) {
+		/* Wait to see if the slave has released the CLK */
+		ret = wait_completion(dev);
+		if (ret) {
+			data->timeout_seen = 1;
+			LOG_ERR("%s: %s wait_completion failure %d\n",
+				__func__, dev->name, ret);
+			return ret;
+		}
+		data->timeout_seen = 0;
+
+		/* If we are here, it means the slave has finally released
+		 * the CLK. The master needs to end that transaction
+		 * gracefully by sending a STOP on the bus.
+		 */
+		LOG_DBG("%s: %s Force Stop", __func__, dev->name);
+		MCHP_I2C_SMB_CTRL_WO(ba) =
+					MCHP_I2C_SMB_CTRL_PIN |
+					MCHP_I2C_SMB_CTRL_ESO |
+					MCHP_I2C_SMB_CTRL_STO |
+					MCHP_I2C_SMB_CTRL_ACK;
+		k_busy_wait(BUS_IDLE_US_DFLT);
+		data->pending_stop = 0;
+
+		/* If the timeout had occurred while the master was reading
+		 * something from the slave, that read needs to be completed
+		 * to clear the bus.
+		 */
+		if (data->previously_in_read == 1) {
+			data->previously_in_read = 0;
+			byte = MCHP_I2C_SMB_DATA(ba);
+		}
+		return -EBUSY;
+	}
 
 	if ((data->pending_stop == 0) || (data->error_seen == 1)) {
 		/* Wait till clock and data lines are HIGH */
@@ -415,19 +451,19 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 				MCHP_I2C_SMB_CTRL_ACK;
 
 		ret = wait_completion(dev);
-		if (ret) {
-			switch (ret) {
-			case -EIO:
-				LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
-					__func__, addr >> 1, dev->name);
-				break;
+		switch (ret) {
+		case 0:	/* Success */
+			break;
 
-			default:
-				data->error_seen = 1;
-				LOG_DBG("%s: %s wait_comp error for addr send",
-					__func__, dev->name);
-				break;
-			}
+		case -EIO:
+			LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			return ret;
+
+		default:
+			data->error_seen = 1;
+			LOG_ERR("%s: %s wait_comp error for addr send",
+				__func__, dev->name);
 			return ret;
 		}
 	}
@@ -436,36 +472,41 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 	for (int i = 0U; i < msg.len; i++) {
 		MCHP_I2C_SMB_DATA(ba) = msg.buf[i];
 		ret = wait_completion(dev);
-		if (ret) {
-			switch (ret) {
-			case -EIO:
-				LOG_DBG("%s: No Data ACK from Slave 0x%x on %s",
-					__func__, addr >> 1, dev->name);
-				break;
 
-			default:
-				data->error_seen = 1;
-				LOG_DBG("%s: %s wait_completion error for data send",
-					__func__, dev->name);
-				break;
-			}
+		switch (ret) {
+		case 0:	/* Success */
+			break;
+
+		case -EIO:
+			LOG_ERR("%s: No Data ACK from Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			return ret;
+
+		case -ETIMEDOUT:
+			data->timeout_seen = 1;
+			LOG_ERR("%s: Clk stretch Timeout - Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			return ret;
+
+		default:
+			data->error_seen = 1;
+			LOG_ERR("%s: %s wait_completion error for data send",
+				__func__, dev->name);
 			return ret;
 		}
+	}
 
-		/* Handle stop bit for last byte to write */
-		if (i == (msg.len - 1)) {
-			if (msg.flags & I2C_MSG_STOP) {
-				/* Send stop and ack bits */
-				MCHP_I2C_SMB_CTRL_WO(ba) =
-						MCHP_I2C_SMB_CTRL_PIN |
-						MCHP_I2C_SMB_CTRL_ESO |
-						MCHP_I2C_SMB_CTRL_STO |
-						MCHP_I2C_SMB_CTRL_ACK;
-				data->pending_stop = 0;
-			} else {
-				data->pending_stop = 1;
-			}
-		}
+	/* Handle stop bit for last byte to write */
+	if (msg.flags & I2C_MSG_STOP) {
+		/* Send stop and ack bits */
+		MCHP_I2C_SMB_CTRL_WO(ba) =
+				MCHP_I2C_SMB_CTRL_PIN |
+				MCHP_I2C_SMB_CTRL_ESO |
+				MCHP_I2C_SMB_CTRL_STO |
+				MCHP_I2C_SMB_CTRL_ACK;
+		data->pending_stop = 0;
+	} else {
+		data->pending_stop = 1;
 	}
 
 	return 0;
@@ -481,6 +522,31 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 	uint32_t ba = config->base_addr;
 	uint8_t byte, ctrl, i2c_timer = 0;
 	int ret;
+
+	if (data->timeout_seen == 1) {
+		/* Wait to see if the slave has released the CLK */
+		ret = wait_completion(dev);
+		if (ret) {
+			data->timeout_seen = 1;
+			LOG_ERR("%s: %s wait_completion failure %d\n",
+				__func__, dev->name, ret);
+			return ret;
+		}
+		data->timeout_seen = 0;
+
+		/* If we are here, it means the slave has finally released
+		 * the CLK. The master needs to end that transaction
+		 * gracefully by sending a STOP on the bus.
+		 */
+		LOG_DBG("%s: %s Force Stop", __func__, dev->name);
+		MCHP_I2C_SMB_CTRL_WO(ba) =
+					MCHP_I2C_SMB_CTRL_PIN |
+					MCHP_I2C_SMB_CTRL_ESO |
+					MCHP_I2C_SMB_CTRL_STO |
+					MCHP_I2C_SMB_CTRL_ACK;
+		k_busy_wait(BUS_IDLE_US_DFLT);
+		return -EBUSY;
+	}
 
 	if (!(msg.flags & I2C_MSG_RESTART) || (data->error_seen == 1)) {
 		/* Wait till clock and data lines are HIGH */
@@ -522,19 +588,26 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 	MCHP_I2C_SMB_DATA(ba) = (addr | BIT(0));
 
 	ret = wait_completion(dev);
-	if (ret) {
-		switch (ret) {
-		case -EIO:
-			LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
-				__func__, addr >> 1, dev->name);
-			break;
+	switch (ret) {
+	case 0:	/* Success */
+		break;
 
-		default:
-			data->error_seen = 1;
-			LOG_DBG("%s: %s wait_completion error for address send",
-				__func__, dev->name);
-			break;
-		}
+	case -EIO:
+		LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
+			__func__, addr >> 1, dev->name);
+		return ret;
+
+	case -ETIMEDOUT:
+		data->previously_in_read = 1;
+		data->timeout_seen = 1;
+		LOG_ERR("%s: Clk stretch Timeout - Slave 0x%x on %s",
+			__func__, addr >> 1, dev->name);
+		return ret;
+
+	default:
+		data->error_seen = 1;
+		LOG_ERR("%s: %s wait_completion error for address send",
+			__func__, dev->name);
 		return ret;
 	}
 
@@ -545,20 +618,30 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 
 	/* Read dummy byte */
 	byte = MCHP_I2C_SMB_DATA(ba);
-	ret = wait_completion(dev);
-	if (ret) {
-		data->error_seen = 1;
-		LOG_DBG("%s: %s wait_completion error for dummy byte",
-			__func__, dev->name);
-		return ret;
-	}
 
 	for (int i = 0U; i < msg.len; i++) {
-		while (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_PIN) {
-			if (MCHP_I2C_SMB_STS_RO(ba) & MCHP_I2C_SMB_STS_BER) {
-				recover_from_error(dev);
-				return -EBUSY;
-			}
+		ret = wait_completion(dev);
+		switch (ret) {
+		case 0:	/* Success */
+			break;
+
+		case -EIO:
+			LOG_ERR("%s: No Data ACK from Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			return ret;
+
+		case -ETIMEDOUT:
+			data->previously_in_read = 1;
+			data->timeout_seen = 1;
+			LOG_ERR("%s: Clk stretch Timeout - Slave 0x%x on %s",
+				__func__, addr >> 1, dev->name);
+			return ret;
+
+		default:
+			data->error_seen = 1;
+			LOG_ERR("%s: %s wait_completion error for data send",
+				__func__, dev->name);
+			return ret;
 		}
 
 		if (i == (msg.len - 1)) {
