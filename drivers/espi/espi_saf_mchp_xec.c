@@ -237,7 +237,7 @@ static int saf_qmspi_init(const struct espi_saf_xec_config *xcfg,
 	for (n = 0; n < MCHP_SAF_NUM_GENERIC_DESCR; n++) {
 		regs->DESCR[MCHP_SAF_CM_EXIT_START_DESCR + n] =
 			hwcfg->generic_descr[n];
-		LOG_DBG("QMSPI DESC %d %x", MCHP_SAF_CM_EXIT_START_DESCR+n,
+		LOG_WRN("QMSPI DESC %d 0x%08x", MCHP_SAF_CM_EXIT_START_DESCR+n,
 			regs->DESCR[MCHP_SAF_CM_EXIT_START_DESCR+n]);
 	}
 
@@ -429,7 +429,29 @@ static void saf_flash_cfg(const struct device *dev,
 		d |= (((did + 1) << MCHP_QMSPI_C_NEXT_DESCR_POS) &
 		      MCHP_QMSPI_C_NEXT_DESCR_MASK);
 		qregs->DESCR[did++] = d;
-		LOG_DBG("DESCR[%d]=0x%08x", did, d);
+		LOG_WRN("DESCR[%d]=0x%08x", did, d);
+	}
+
+	/* Workaround to change continous read descriptor sequence
+	 * Logic above programs 0->1->2, this changes that to 0->2
+	 * Note: cannot simply modify descriptor sequence to be 0-1
+	 * when no dummy clocks are required for transaction (dual mode)
+	 * Since transfer length is overriden only in descriptor 2
+	 */
+	if (fcfg->flags & MCHP_FLASH_CONT_READ_NO_DUMMY_CLK) {
+		did = MCHP_SAF_QMSPI_CS0_START_DESCR;
+		if (cs != 0) {
+			did = MCHP_SAF_QMSPI_CS1_START_DESCR;
+		}
+
+		d = fcfg->descr[did] & ~(MCHP_QMSPI_C_NEXT_DESCR_MASK);
+		d |= (((did + 2) << MCHP_QMSPI_C_NEXT_DESCR_POS) &
+		      MCHP_QMSPI_C_NEXT_DESCR_MASK);
+		qregs->DESCR[did] = d;
+
+		for (size_t i = 0; i < MCHP_SAF_QMSPI_NUM_FLASH_DESCR; i++) {
+			LOG_WRN("CS%d DESCR[%d]=0x%08x", cs, did+i, qregs->DESCR[did+i]);
+		}
 	}
 
 	mchp_saf_poll2_mask_wr(regs, cs, fcfg->poll2_mask);

@@ -404,4 +404,6 @@ struct espi_saf_protection {
 	const struct espi_saf_pr *pregions;
 };
 
+#define MCHP_FLASH_CONT_READ_NO_DUMMY_CLK	BIT(1)
+
 #endif /* _SOC_ESPI_SAF_H_ */
