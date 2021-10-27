@@ -169,6 +169,20 @@ config RAM_TRACING_BUFFER_SIZE
 	  Size of the RAM trace buffer. Trace will be discarded if the
 	  length is exceeded.
 
+config TRACING_BACKEND_PSE_SHMEM
+	bool "Enable PSE SHMEM backend"
+	help
+	  Use PSE SHMEM with host to output tracing data which can
+	  be dumped by a host tool
+
+config PSE_SHMEM_TRACING_BUFFER_SIZE
+	int "PSE SHMEM Tracing buffer size"
+	default 65536
+	depends on TRACING_BACKEND_PSE_SHMEM
+	help
+	  Size of the PSE SHMEM trace buffer. Trace will be discarded if the
+	  length is exceeded.
+
 endchoice
 
 config TRACING_BACKEND_UART_NAME

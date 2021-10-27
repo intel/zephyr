@@ -37,6 +37,10 @@ zephyr_sources_ifdef(
   tracing_backend_ram.c
   )
 
+zephyr_sources_ifdef(
+  CONFIG_TRACING_BACKEND_PSE_SHMEM
+  tracing_backend_pse_shmem.c
+  )
 endif()
 
 if(NOT CONFIG_PERCEPIO_TRACERECORDER AND NOT CONFIG_TRACING_CTF
