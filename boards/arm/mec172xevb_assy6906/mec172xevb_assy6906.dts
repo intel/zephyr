@@ -147,3 +147,7 @@
 	lines = <4>;
 	chip-select = <0>;
 };
+
+&kscan0 {
+	status = "okay";
+};
