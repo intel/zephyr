@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Intel Corporation.
+ * Copyright (c) 2021 Intel Corporation.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,6 +20,9 @@
 #define RX_THREAD_STACK_SIZE 512
 #define RX_THREAD_PRIORITY 2
 #define BUF_ALLOC_TIMEOUT K_MSEC(50)
+#if defined(CONFIG_CAN_UTILS)
+#define DEFAULT_CAN_DEV_ADDR (0x10)
+#endif
 
 /* TODO: make msgq size configurable */
 CAN_DEFINE_MSGQ(socket_can_msgq, 5);
@@ -29,28 +32,85 @@ struct socket_can_context {
 	const struct device *can_dev;
 	struct net_if *iface;
 	struct k_msgq *msgq;
-
+	can_tx_callback_t tx_cb;
+	uint32_t err_mask;
 	/* TODO: remove the thread and push data to net directly from rx isr */
 	k_tid_t rx_tid;
 	struct k_thread rx_thread_data;
 };
+
+static struct socket_can_context socket_can_context_0;
+static struct socket_can_context socket_can_context_1;
 
 static inline void socket_can_iface_init(struct net_if *iface)
 {
 	const struct device *dev = net_if_get_device(iface);
 	struct socket_can_context *socket_context = dev->data;
 
-	socket_context->iface = iface;
+#if defined(CONFIG_CAN_UTILS)
+	uint8_t addr;
 
+	addr = DEFAULT_CAN_DEV_ADDR;
+	net_if_set_link_addr(iface, &addr, sizeof(uint8_t), NET_LINK_CANBUS);
+#endif
+	socket_context->iface = iface;
 	LOG_DBG("Init CAN interface %p dev %p", iface, dev);
 }
 
-static inline void tx_irq_callback(int error, void *arg)
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+static bool is_err_masked(uint32_t error_flags, uint32_t err_mask)
+{
+	if ((error_flags == CAN_TX_ARB_LOST) && (err_mask & CAN_ERR_LOSTARB)) {
+		return true;
+	}
+
+	if ((error_flags == CAN_TX_BUS_OFF) && (err_mask & CAN_ERR_BUSOFF)) {
+		return true;
+	}
+
+	return false;
+}
+#else
+static bool is_err_masked(uint32_t error_flags, uint32_t err_mask)
+{
+	return false;
+}
+#endif
+
+static inline void tx_irq_callback_0(uint32_t error_flags, void *arg)
+{
+	bool mask_error = false;
+	uint32_t err_mask = socket_can_context_0.err_mask;
+
+	if (error_flags) {
+		mask_error = is_err_masked(error_flags, err_mask);
+		if (!mask_error) {
+			LOG_DBG("CAN0 Callback! error-code: %d", error_flags);
+		}
+	}
+}
+
+static inline void tx_irq_callback_1(uint32_t error_flags, void *arg)
+{
+	bool mask_error = false;
+	uint32_t err_mask = socket_can_context_1.err_mask;
+
+	if (error_flags) {
+		mask_error = is_err_masked(error_flags, err_mask);
+		if (mask_error) {
+			return;
+		}
+		LOG_DBG("CAN1 Callback! error-code: %d", error_flags);
+	}
+}
+
+static inline void tx_irq_callback(uint32_t error_flags, void *arg)
 {
 	char *caller_str = (char *)arg;
-	if (error != 0) {
+
+	if (error_flags) {
 		LOG_DBG("TX error from %s! error-code: %d",
-			caller_str, error);
+			caller_str, error_flags);
 	}
 }
 
@@ -67,7 +127,7 @@ static inline int socket_can_send(const struct device *dev,
 
 	ret = can_send(socket_context->can_dev,
 		       (struct zcan_frame *)pkt->frags->data,
-		       SEND_TIMEOUT, tx_irq_callback, "socket_can_send");
+		       SEND_TIMEOUT, socket_context->tx_cb, "socket_can_send");
 	if (ret) {
 		LOG_DBG("Cannot send socket CAN msg (%d)", ret);
 	}
@@ -84,25 +144,82 @@ static inline int socket_can_setsockopt(const struct device *dev, void *obj,
 {
 	struct socket_can_context *socket_context = dev->data;
 	struct net_context *ctx = obj;
-	int ret;
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+	uint32_t *err_mask_p;
+#endif
+	int ret = 0;
 
-	if (level != SOL_CAN_RAW && optname != CAN_RAW_FILTER) {
+	if (level != SOL_CAN_RAW || optval == NULL) {
 		errno = EINVAL;
 		return -1;
 	}
 
-	__ASSERT_NO_MSG(optlen == sizeof(struct zcan_filter));
+	switch (optname) {
+	case CAN_RAW_FILTER:
+		__ASSERT(optlen == sizeof(struct zcan_filter),
+			 "Filter size mismatch in setsockopt\n");
+		if (optlen != sizeof(struct zcan_filter)) {
+			LOG_ERR("Filter size mismatch in setsockopt");
+			ret = -1;
+			break;
+		}
 
-	ret = can_attach_msgq(socket_context->can_dev, socket_context->msgq,
-			      optval);
-	if (ret == CAN_NO_FREE_FILTER) {
-		errno = ENOSPC;
-		return -1;
+		ret = can_attach_msgq(socket_context->can_dev,
+				      socket_context->msgq,
+				      optval);
+		if (ret == CAN_NO_FREE_FILTER) {
+			LOG_ERR("Failed to attach msgq");
+			errno = ENOSPC;
+		}
+		break;
+
+#ifdef CONFIG_NET_SOCKETS_CAN_FD
+	case CAN_RAW_FD_FRAMES:
+
+		if (optlen != sizeof(uint32_t)) {
+			errno = -EINVAL;
+			LOG_ERR("Invalid FD optlen");
+			ret = -1;
+			break;
+		}
+
+		ret = can_ioctl(socket_context->can_dev, CAN_IOCTL_FD_MODE,
+				(void *)optval);
+		if (ret != 0) {
+			errno = -EINVAL;
+			LOG_ERR("Failed to set can ioctl value");
+		}
+		break;
+#endif
+
+#ifdef CONFIG_NET_SOCKETS_CAN_ERR_FILTER
+	case CAN_RAW_ERR_FILTER:
+		if (optlen != sizeof(uint32_t)) {
+			errno = -EINVAL;
+			ret = -1;
+			break;
+		}
+
+		err_mask_p = (uint32_t *)(optval);
+
+		if (*err_mask_p & (CAN_ERR_LOSTARB | CAN_ERR_BUSOFF)) {
+			socket_context->err_mask = *(err_mask_p);
+		} else {
+			errno = -ENOTSUP;
+			ret = -1;
+		}
+		break;
+#endif
+
+	default:
+		LOG_ERR("Unsupported CAN socket option");
+		ret = -1;
 	}
 
-	net_context_set_filter_id(ctx, ret);
-
-	return 0;
+	if (!ret) {
+		net_context_set_filter_id(ctx, ret);
+	}
+	return ret;
 }
 
 static inline void socket_can_close(const struct device *dev, int filter_id)

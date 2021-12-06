@@ -582,9 +582,9 @@ static inline int can_write(const struct device *dev, const uint8_t *data,
 	struct zcan_frame msg;
 
 #if defined(CONFIG_CAN_FD_MODE)
-	if (length > CANFD_MAX_DLC) {
+	if (length > CAN_MAX_DLEN) {
 #else
-	if (length > CAN_MAX_DLC) {
+	if (length > CAN_MAX_DLEN) {
 #endif
 		return -EINVAL;
 	}
