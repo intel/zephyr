@@ -110,7 +110,12 @@ void sys_trace_k_thread_ready(struct k_thread *thread)
 
 void sys_trace_k_thread_start(struct k_thread *thread)
 {
+	ARG_UNUSED(thread);
+}
 
+void sys_trace_k_thread_wakeup(struct k_thread *thread)
+{
+	ARG_UNUSED(thread);
 }
 
 void sys_trace_k_thread_pend(struct k_thread *thread)
