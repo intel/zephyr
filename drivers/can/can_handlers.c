@@ -39,7 +39,7 @@ static inline int z_vrfy_can_send(const struct device *dev,
 	Z_OOPS(Z_SYSCALL_DRIVER_CAN(dev, send));
 
 	Z_OOPS(Z_SYSCALL_MEMORY_READ((const struct zcan_frame *)msg,
-				      sizeof(struct zcan_frame)));
+				     sizeof(struct zcan_frame)));
 	Z_OOPS(Z_SYSCALL_MEMORY_READ(((struct zcan_frame *)msg)->data,
 				     sizeof((struct zcan_frame *)msg)->data));
 	Z_OOPS(Z_SYSCALL_VERIFY_MSG(callback_isr == 0,
@@ -106,4 +106,26 @@ static inline int z_vrfy_can_recover(const struct device *dev,
 	return z_impl_can_recover(dev, k_timeout_t timeout);
 }
 #include <syscalls/can_recover_mrsh.c>
+
 #endif /* CONFIG_CAN_AUTO_BUS_OFF_RECOVERY */
+
+static inline int z_vrfy_can_set_bitrate(const struct device *dev,
+					 uint32_t bitrate,
+					 uint32_t bitrate_data)
+{
+	Z_OOPS(Z_SYSCALL_DRIVER_CAN(dev, set_bitrate));
+	return z_impl_can_set_bitrate((const struct device *)dev,
+				      (uint32_t) bitrate,
+				      (uint32_t) bitrate_data);
+}
+#include <syscalls/can_set_bitrate_mrsh.c>
+
+static inline int z_vrfy_can_set_mode(const struct device *dev,
+				      enum can_mode mode)
+{
+	Z_OOPS(Z_SYSCALL_DRIVER_CAN(dev, set_mode));
+
+	return z_impl_can_set_mode((const struct device *)dev,
+				   (enum can_mode) mode);
+}
+#include <syscalls/can_set_mode_mrsh.c>
