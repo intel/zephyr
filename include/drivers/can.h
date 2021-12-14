@@ -407,6 +407,9 @@ typedef int (*can_ioctl_t)(const struct device *dev, uint32_t cmd, void *arg);
 
 typedef int (*can_get_core_clock_t)(const struct device *dev, uint32_t *rate);
 
+typedef int (*can_set_bitrate_t)(const struct device *dev, uint32_t bitrate,
+				 uint32_t bitrate_data);
+
 #ifndef CONFIG_CAN_WORKQ_FRAMES_BUF_CNT
 #define CONFIG_CAN_WORKQ_FRAMES_BUF_CNT 4
 #endif
@@ -454,6 +457,7 @@ __subsystem struct can_driver_api {
 	/* Max values for the timing registers during the data phase */
 	struct can_timing timing_max_data;
 #endif
+	can_set_bitrate_t set_bitrate;
 };
 
 /**
@@ -837,75 +841,17 @@ static inline int z_impl_can_set_timing(const struct device *dev,
 	return api->set_timing(dev, timing, timing_data);
 }
 
-/**
- * @brief Set the bitrate of the CAN controller
- *
- * The second parameter bitrate_data is only relevant for CAN-FD.
- * If the controller does not support CAN-FD or the FD mode is not enabled,
- * this parameter is ignored.
- * The sample point is set to the CiA DS 301 recommended value of 87.5%
- *
- * @param dev          Pointer to the device structure for the driver instance.
- * @param bitrate      Desired arbitration phase bitrate
- * @param bitrate_data Desired data phase bitrate
- *
- * @retval 0 If successful.
- * @retval -EINVAL bitrate cannot be reached.
- * @retval -EIO General input / output error, failed to set bitrate.
- */
-static inline int can_set_bitrate(const struct device *dev,
-				  uint32_t bitrate,
-				  uint32_t bitrate_data)
+__syscall int can_set_bitrate(const struct device *dev, uint32_t bitrate,
+			      uint32_t bitrate_data);
+
+static inline int z_impl_can_set_bitrate(const struct device *dev,
+					 uint32_t bitrate,
+					 uint32_t bitrate_data)
 {
-	struct can_timing timing;
+	const struct can_driver_api *api =
+		(const struct can_driver_api *)dev->api;
 
-#ifdef CONFIG_CAN_FD_MODE
-	struct can_timing timing_data;
-#endif
-	int ret;
-
-	ret = can_calc_timing(dev, &timing, bitrate, 875);
-	if (ret < 0) {
-		return -EINVAL;
-	}
-
-	timing.sjw = CAN_SJW_NO_CHANGE;
-
-#ifdef CONFIG_CAN_FD_MODE
-	ret = can_calc_timing_data(dev, &timing_data, bitrate_data, 875);
-	if (ret < 0) {
-		return -EINVAL;
-	}
-
-	timing_data.sjw = CAN_SJW_NO_CHANGE;
-
-	return can_set_timing(dev, &timing, &timing_data);
-#else
-	return can_set_timing(dev, &timing, NULL);
-#endif  /* CONFIG_CAN_FD_MODE */
-}
-
-/**
- * @brief Configure operation of a host controller.
- *
- * @param dev Pointer to the device structure for the driver instance.
- * @param mode Operation mode
- * @param bitrate bus-speed in Baud/s
- *
- * @retval 0 If successful.
- * @retval -EIO General input / output error, failed to configure device.
- */
-static inline int can_configure(const struct device *dev, enum can_mode mode,
-				uint32_t bitrate)
-{
-	if (bitrate > 0) {
-		int err = can_set_bitrate(dev, bitrate, 0);
-		if (err != 0) {
-			return err;
-		}
-	}
-
-	return can_set_mode(dev, mode);
+	return api->set_bitrate(dev, bitrate, bitrate_data);
 }
 
 /**
