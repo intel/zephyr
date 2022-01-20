@@ -30,3 +30,5 @@ config PINCTRL_DYNAMIC
 	  peripheral at early boot stages depending on a certain input.
 
 endif # PINCTRL
+
+source "drivers/pinctrl/Kconfig.xec"

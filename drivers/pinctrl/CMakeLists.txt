@@ -3,3 +3,4 @@
 
 zephyr_library()
 zephyr_library_sources(common.c)
+zephyr_library_sources_ifdef(CONFIG_PINCTRL_MCHP_XEC pinctrl_mchp_xec.c)
