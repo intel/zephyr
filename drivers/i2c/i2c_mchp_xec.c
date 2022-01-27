@@ -593,6 +593,7 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 		break;
 
 	case -EIO:
+		data->error_seen = 1;
 		LOG_WRN("%s: No Addr ACK from Slave 0x%x on %s",
 			__func__, addr >> 1, dev->name);
 		return ret;
