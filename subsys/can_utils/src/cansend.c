@@ -159,4 +159,3 @@ int cansend(int param_count, char **argv)
 	close(s);
 	return CAN_UTILS_OK;
 }
-

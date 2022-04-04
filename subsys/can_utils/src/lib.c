@@ -203,4 +203,3 @@ void dummy_print(char *ch, ...)
 }
 /* CONFIG_LIB_DEBUG_ENABLE || CONFIG_CAN_UTILS_DEBUG */
 #endif
-

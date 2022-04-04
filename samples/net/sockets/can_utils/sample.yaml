@@ -11,4 +11,3 @@ sample:
 tests:
   sample.net.can.utils:
     platform_whitelist: intel_ehl_crb
-

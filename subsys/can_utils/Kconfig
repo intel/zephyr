@@ -38,4 +38,3 @@ config LIB_DEBUG_ENABLE
 	  This option enables debug for internal utils lib
 
 endmenu
-
