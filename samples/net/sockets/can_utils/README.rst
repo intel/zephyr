@@ -32,4 +32,3 @@ Build the socket CAN sample application like this:
 
 .. zephyr-app-commands::
    :zephyr-app: samples/net/sockets/can_utils
-

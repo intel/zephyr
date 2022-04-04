@@ -109,4 +109,3 @@ void main(void)
 /* CANTEST */
 #endif
 }
-

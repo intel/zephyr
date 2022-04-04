@@ -57,4 +57,3 @@ void dummy_print(char *ch, ...);
 #endif  /* CONFIG_LIB_DEBUG_ENABLE || CONFIG_CAN_UTILS_DEBUG */
 
 #endif  /* CAN_UTILS_LIB_H */
-

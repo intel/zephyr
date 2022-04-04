@@ -134,4 +134,3 @@ int candump(int num, ...);
  * @}
  */
 #endif/* CANUTILSIF_H */
-
