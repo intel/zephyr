@@ -41,4 +41,8 @@ config MCHP_ECIA_XEC
 	help
 	  Enable support for Microchip XEC ECIA driver
 
+config PS2_XEC
+	default y
+	depends on PS2
+
 endif # SOC_SERIES_MEC172X
