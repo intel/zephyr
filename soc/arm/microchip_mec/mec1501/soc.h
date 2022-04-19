@@ -17,7 +17,7 @@
 #include "../common/soc_gpio.h"
 #include "../common/soc_pins.h"
 #include "../common/soc_espi_channels.h"
-#include "../common/soc_espi_saf.h"
+#include "soc_espi_saf_v1.h"
 
 #endif
 
