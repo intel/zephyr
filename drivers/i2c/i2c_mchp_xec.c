@@ -437,8 +437,8 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 		ret = wait_bus_free(dev);
 		if (ret) {
 			data->error_seen = 1;
-			LOG_DBG("%s: %s wait_bus_free failure",
-				__func__, dev->name);
+			LOG_DBG("%s: %s wait_bus_free failure %d",
+				__func__, dev->name, ret);
 			return ret;
 		}
 
@@ -462,8 +462,8 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 
 		default:
 			data->error_seen = 1;
-			LOG_ERR("%s: %s wait_comp error for addr send",
-				__func__, dev->name);
+			LOG_ERR("%s: %s wait_comp error %d for addr send",
+				__func__, dev->name, ret);
 			return ret;
 		}
 	}
@@ -490,8 +490,8 @@ static int i2c_xec_poll_write(const struct device *dev, struct i2c_msg msg,
 
 		default:
 			data->error_seen = 1;
-			LOG_ERR("%s: %s wait_completion error for data send",
-				__func__, dev->name);
+			LOG_ERR("%s: %s wait_completion error %d for data send",
+				__func__, dev->name, ret);
 			return ret;
 		}
 	}
@@ -572,8 +572,8 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 		ret = wait_bus_free(dev);
 		if (ret) {
 			data->error_seen = 1;
-			LOG_DBG("%s: %s wait_bus_free failure",
-				__func__, dev->name);
+			LOG_DBG("%s: %s wait_bus_free failure %d",
+				__func__, dev->name, ret);
 			return ret;
 		}
 	}
@@ -607,8 +607,8 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 
 	default:
 		data->error_seen = 1;
-		LOG_ERR("%s: %s wait_completion error for address send",
-			__func__, dev->name);
+		LOG_ERR("%s: %s wait_completion error %d for address send",
+			__func__, dev->name, ret);
 		return ret;
 	}
 
@@ -640,8 +640,8 @@ static int i2c_xec_poll_read(const struct device *dev, struct i2c_msg msg,
 
 		default:
 			data->error_seen = 1;
-			LOG_ERR("%s: %s wait_completion error for data send",
-				__func__, dev->name);
+			LOG_ERR("%s: %s wait_completion error %d for data send",
+				__func__, dev->name, ret);
 			return ret;
 		}
 
