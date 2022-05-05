@@ -1089,6 +1089,11 @@ static const struct espi_xec_irq_info espi_saf_xec_irq_info_0[] = {
 	DT_FOREACH_PROP_ELEM(DT_NODELABEL(espi_saf0), girqs, XEC_SAF_IRQ_INFO)
 };
 
+/* This macro only exists in Zephyr 3.0+, remove this when intercepting that version */
+#ifndef DT_INST_PARENT
+#define DT_INST_PARENT(inst) DT_PARENT(DT_DRV_INST(inst))
+#endif
+
 static const struct espi_saf_xec_config espisaf_xec_config = {
 	.saf_base = (struct mchp_espi_saf * const)(DT_INST_REG_ADDR_BY_IDX(0, 0)),
 	.qmspi_base = (struct qmspi_regs * const)(DT_INST_REG_ADDR_BY_IDX(0, 1)),
