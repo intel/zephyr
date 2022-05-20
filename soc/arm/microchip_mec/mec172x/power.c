@@ -12,6 +12,7 @@
 #include <soc.h>
 #include <arch/cpu.h>
 #include <arch/arm/aarch32/cortex_m/cmsis.h>
+
 #ifndef CONFIG_PM_DEVICE
 #include "device_power.h"
 #endif
@@ -150,11 +151,9 @@ static void z_power_soc_sleep(void)
  * For deep sleep pm_system_suspend has executed all the driver
  * power management call backs.
  */
-__weak void pm_state_set(enum pm_state state, uint8_t substate_id)
+__weak void pm_power_state_set(struct pm_state_info info)
 {
-	ARG_UNUSED(substate_id);
-
-	switch (state) {
+	switch (info.state) {
 	case PM_STATE_SUSPEND_TO_IDLE:
 		z_power_soc_sleep();
 		break;
