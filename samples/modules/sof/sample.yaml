@@ -20,3 +20,4 @@ tests:
       - nxp_adsp_imx8
       - nxp_adsp_imx8x
       - nxp_adsp_imx8m
+      - intel_adsp_ace15_mtpm
