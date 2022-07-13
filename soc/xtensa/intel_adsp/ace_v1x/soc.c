@@ -34,6 +34,7 @@ extern void parse_manifest(void);
 
 __imr void hp_sram_init(void)
 {
+#ifndef CONFIG_BOARD_INTEL_ADSP_ACE15_MTPM_SIM
 	uint32_t hpsram_ebb_quantity = mtl_hpsram_get_bank_count();
 	volatile uint32_t *l2hsbpmptr = (volatile uint32_t *)MTL_L2MM->l2hsbpmptr;
 	volatile uint8_t *status = (volatile uint8_t *)l2hsbpmptr + 4;
@@ -47,16 +48,19 @@ __imr void hp_sram_init(void)
 			z_idelay(DELAY_COUNT);
 		}
 	}
+#endif
 }
 
 __imr void lp_sram_init(void)
 {
+#ifndef CONFIG_BOARD_INTEL_ADSP_ACE15_MTPM_SIM
 	uint32_t lpsram_ebb_quantity = mtl_lpsram_get_bank_count();
 	volatile uint32_t *l2usbpmptr = (volatile uint32_t *)MTL_L2MM->l2usbpmptr;
 
 	for (uint32_t idx = 0; idx < lpsram_ebb_quantity; ++idx) {
 		*(l2usbpmptr + idx * 2) = 0;
 	}
+#endif
 }
 
 __imr void boot_core0(void)

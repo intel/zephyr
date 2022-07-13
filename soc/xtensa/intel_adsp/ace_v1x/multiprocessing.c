@@ -26,6 +26,13 @@ static void ipc_isr(void *arg)
 
 void soc_mp_init(void)
 {
+#ifdef CONFIG_BOARD_INTEL_ADSP_ACE15_MTPM_SIM
+	/* BADDR stores the Xtensa LX7 AltResetVec input */
+	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+		DFDSPBRCP.bootctl[i].baddr = (uint32_t) z_soc_mp_asm_entry;
+	}
+#endif
+
 	IRQ_CONNECT(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA), 0, ipc_isr, 0, 0);
 
 	irq_enable(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA));
@@ -44,6 +51,7 @@ void soc_mp_init(void)
 
 void soc_start_core(int cpu_num)
 {
+#ifndef CONFIG_BOARD_INTEL_ADSP_ACE15_MTPM_SIM
 	int retry = CORE_POWER_CHECK_NUM;
 
 	if (cpu_num > 0) {
@@ -55,9 +63,11 @@ void soc_start_core(int cpu_num)
 		/* Tell the ACE ROM that it should use secondary core flow */
 		DFDSPBRCP.bootctl[cpu_num].battr |= DFDSPBRCP_BATTR_LPSCTL_BATTR_SLAVE_CORE;
 	}
+#endif
 
 	DFDSPBRCP.capctl[cpu_num].ctl |= DFDSPBRCP_CTL_SPA;
 
+#ifndef CONFIG_BOARD_INTEL_ADSP_ACE15_MTPM_SIM
 	/* Waiting for power up */
 	while (~(DFDSPBRCP.capctl[cpu_num].ctl & DFDSPBRCP_CTL_CPA) && --retry) {
 		k_busy_wait(CORE_POWER_CHECK_DELAY);
@@ -66,6 +76,7 @@ void soc_start_core(int cpu_num)
 	if (!retry) {
 		__ASSERT(false, "%s secondary core has not powered up", __func__);
 	}
+#endif
 }
 
 void soc_mp_startup(uint32_t cpu)
