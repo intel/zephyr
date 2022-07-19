@@ -222,7 +222,7 @@
 /drivers/entropy/*rv32m1*                 @dleach02
 /drivers/entropy/*gecko*                  @chrta
 /drivers/entropy/*litex*                  @mateusz-holenko @kgugala @pgielda
-/drivers/espi/                            @albertofloyd @franciscomunoz @scottwcpg
+/drivers/espi/                            @@albertofloyd @VenkatKotakonda @franciscomunoz @scottwcpg
 /drivers/ethernet/                        @tbursztyka @pfalcon
 /drivers/ethernet/*stm32*                 @Nukersson @lochej
 /drivers/ethernet/*w5500*                 @parthitce
@@ -283,7 +283,7 @@
 /drivers/modem/hl7800.c                   @LairdCP/zephyr
 /drivers/modem/Kconfig.hl7800             @LairdCP/zephyr
 /drivers/pcie/                            @dcpleung @nashif @jhedberg
-/drivers/peci/                            @albertofloyd @franciscomunoz @scottwcpg
+/drivers/peci/                            @@albertofloyd @VenkatKotakonda @franciscomunoz @scottwcpg
 /drivers/pinctrl/                         @gmarull
 /drivers/pinmux/*b91*                     @yurvyn
 /drivers/pinmux/*hsdk*                    @iriszzw
@@ -364,7 +364,7 @@
 /drivers/i2c/*sam0*                       @Sizurka
 /drivers/i2c/i2c_dw*                      @dcpleung
 /drivers/i2c/*tca9546a*                   @kurddt
-/drivers/*/*xec*                          @franciscomunoz @albertofloyd @scottwcpg
+/drivers/*/*xec*                          @franciscomunoz @@albertofloyd @VenkatKotakonda @scottwcpg
 /drivers/watchdog/*gecko*                 @oanerer
 /drivers/watchdog/*sifive*                @katsuster
 /drivers/watchdog/wdt_handlers.c          @dcpleung @nashif
@@ -400,7 +400,7 @@
 /dts/arm/nordic/                          @ioannisg @carlescufi
 /dts/arm/nuvoton/                         @ssekar15 @MulinChao @WealianLiao @ChiHuaL
 /dts/arm/nxp/                             @mmahadevan108 @dleach02
-/dts/arm/microchip/                       @franciscomunoz @albertofloyd @scottwcpg
+/dts/arm/microchip/                       @franciscomunoz @@albertofloyd @VenkatKotakonda @scottwcpg
 /dts/arm/silabs/efm32_pg_1b.dtsi          @rdmeneze
 /dts/arm/silabs/efm32gg11b*               @oanerer
 /dts/arm/silabs/efm32_jg_pg*              @chrta
@@ -459,7 +459,7 @@
 /include/drivers/counter.h                @nordic-krch
 /include/drivers/dac.h                    @martinjaeger
 /include/drivers/display.h                @vanwinkeljan
-/include/drivers/espi.h                   @albertofloyd @franciscomunoz @scottwcpg
+/include/drivers/espi.h                   @@albertofloyd @VenkatKotakonda @franciscomunoz @scottwcpg
 /include/drivers/bluetooth/               @joerchan @jhedberg @Vudentz
 /include/drivers/flash.h                  @nashif @carlescufi @galak @MaureenHelm @nvlsianpu
 /include/drivers/i2c_emul.h               @sjg20
@@ -474,7 +474,7 @@
 /include/drivers/sensor.h                 @MaureenHelm
 /include/drivers/spi.h                    @tbursztyka
 /include/drivers/lora.h                   @Mani-Sadhasivam
-/include/drivers/peci.h                   @albertofloyd @franciscomunoz @scottwcpg
+/include/drivers/peci.h                   @@albertofloyd @VenkatKotakonda @franciscomunoz @scottwcpg
 /include/drivers/pm_cpu_ops.h             @carlocaione
 /include/drivers/pm_cpu_ops/              @carlocaione
 /include/app_memory/                      @dcpleung
