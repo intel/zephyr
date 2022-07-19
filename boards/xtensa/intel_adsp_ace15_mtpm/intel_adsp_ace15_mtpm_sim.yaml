@@ -4,7 +4,6 @@ type: mcu
 simulation: xt-sim
 arch: xtensa
 toolchain:
-  - zephyr
   - xcc
 testing:
   ignore_tags:
