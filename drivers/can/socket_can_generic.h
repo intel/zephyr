@@ -77,7 +77,7 @@ static bool is_err_masked(uint32_t error_flags, uint32_t err_mask)
 }
 #endif
 
-static inline void tx_irq_callback_0(uint32_t error_flags, void *arg)
+static inline void tx_irq_callback_0(int error_flags, void *arg)
 {
 	bool mask_error = false;
 	uint32_t err_mask = socket_can_context_0.err_mask;
@@ -90,7 +90,7 @@ static inline void tx_irq_callback_0(uint32_t error_flags, void *arg)
 	}
 }
 
-static inline void tx_irq_callback_1(uint32_t error_flags, void *arg)
+static inline void tx_irq_callback_1(int error_flags, void *arg)
 {
 	bool mask_error = false;
 	uint32_t err_mask = socket_can_context_1.err_mask;
@@ -104,13 +104,12 @@ static inline void tx_irq_callback_1(uint32_t error_flags, void *arg)
 	}
 }
 
-static inline void tx_irq_callback(uint32_t error_flags, void *arg)
+static inline void tx_irq_callback(int error, void *arg)
 {
 	char *caller_str = (char *)arg;
-
-	if (error_flags) {
+	if (error != 0) {
 		LOG_DBG("TX error from %s! error-code: %d",
-			caller_str, error_flags);
+			caller_str, error);
 	}
 }
 

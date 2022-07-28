@@ -42,6 +42,12 @@ static struct bt_le_oob oob_sc_local = { 0 };
 static struct bt_le_oob oob_sc_remote = { 0 };
 #endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
 
+/* connection parameters for rejection test */
+#define REJECT_INTERVAL_MIN 0x0C80
+#define REJECT_INTERVAL_MAX 0x0C80
+#define REJECT_LATENCY 0x0000
+#define REJECT_SUPERVISION_TIMEOUT 0x0C80
+
 #if defined(CONFIG_BT_PRIVACY)
 static struct {
 	bt_addr_le_t addr;
@@ -153,6 +159,19 @@ static void le_param_updated(struct bt_conn *conn, uint16_t interval,
 		    CONTROLLER_INDEX, (uint8_t *) &ev, sizeof(ev));
 }
 
+static bool le_param_req(struct bt_conn *conn, struct bt_le_conn_param *param)
+{
+	/* reject update if all parameters match reject pattern */
+	if ((param->interval_min == REJECT_INTERVAL_MIN) &&
+			(param->interval_max == REJECT_INTERVAL_MAX) &&
+			(param->latency == REJECT_LATENCY) &&
+			(param->timeout == REJECT_SUPERVISION_TIMEOUT)) {
+		return false;
+	}
+
+	return true;
+}
+
 static void le_security_changed(struct bt_conn *conn, bt_security_t level,
 				enum bt_security_err err)
 {
@@ -200,6 +219,7 @@ static struct bt_conn_cb conn_callbacks = {
 	.disconnected = le_disconnected,
 	.identity_resolved = le_identity_resolved,
 	.le_param_updated = le_param_updated,
+	.le_param_req = le_param_req,
 	.security_changed = le_security_changed,
 };
 
@@ -234,6 +254,7 @@ static void supported_commands(uint8_t *data, uint16_t len)
 	tester_set_bit(cmds, GAP_OOB_SC_GET_LOCAL_DATA);
 	tester_set_bit(cmds, GAP_OOB_SC_SET_REMOTE_DATA);
 #endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
+	tester_set_bit(cmds, GAP_SET_FILTER_LIST);
 
 	tester_send(BTP_SERVICE_ID_GAP, GAP_READ_SUPPORTED_COMMANDS,
 		    CONTROLLER_INDEX, (uint8_t *) rp, sizeof(cmds));
@@ -788,19 +809,32 @@ static void stop_discovery(const uint8_t *data, uint16_t len)
 
 static void connect(const uint8_t *data, uint16_t len)
 {
-	struct bt_conn *conn;
+	const bt_addr_le_t *addr = (const bt_addr_le_t *)data;
 	uint8_t status;
 	int err;
 
-	err = bt_conn_le_create((bt_addr_le_t *) data, BT_CONN_LE_CREATE_CONN,
-				 BT_LE_CONN_PARAM_DEFAULT, &conn);
-	if (err) {
-		LOG_ERR("Failed to create connection (%d)", err);
-		status = BTP_STATUS_FAILED;
-		goto rsp;
+	if (bt_addr_le_cmp(addr, BT_ADDR_LE_ANY) != 0) {
+		struct bt_conn *conn;
+
+		err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
+					BT_LE_CONN_PARAM_DEFAULT, &conn);
+		if (err) {
+			LOG_ERR("Failed to create connection (%d)", err);
+			status = BTP_STATUS_FAILED;
+			goto rsp;
+		}
+
+		bt_conn_unref(conn);
+	} else {
+		err = bt_conn_le_create_auto(BT_CONN_LE_CREATE_CONN,
+					     BT_LE_CONN_PARAM_DEFAULT);
+		if (err) {
+			LOG_ERR("Failed to create auto connection (%d)", err);
+			status = BTP_STATUS_FAILED;
+			goto rsp;
+		}
 	}
 
-	bt_conn_unref(conn);
 	status = BTP_STATUS_SUCCESS;
 
 rsp:
@@ -1156,6 +1190,35 @@ static void set_oob_legacy_data(const uint8_t *data, uint16_t len)
 		   CONTROLLER_INDEX, BTP_STATUS_SUCCESS);
 }
 
+static void set_filter_list(const uint8_t *data, uint16_t len)
+{
+	const struct gap_set_filter_list *cmd = (const void *) data;
+	uint8_t status;
+	int err;
+
+	if (len < sizeof(*cmd) ||
+	    len != (sizeof(*cmd) + (cmd->cnt * sizeof(cmd->addr[0])))) {
+		status = BTP_STATUS_FAILED;
+		goto failed;
+	}
+
+	(void)bt_le_filter_accept_list_clear();
+
+	for (int i = 0; i < cmd->cnt; i++) {
+		err = bt_le_filter_accept_list_add(&cmd->addr[i]);
+		if (err < 0) {
+			status = BTP_STATUS_FAILED;
+			goto failed;
+		}
+	}
+
+	status = BTP_STATUS_SUCCESS;
+
+failed:
+	tester_rsp(BTP_SERVICE_ID_GAP, GAP_SET_FILTER_LIST,
+		   CONTROLLER_INDEX, status);
+}
+
 void tester_handle_gap(uint8_t opcode, uint8_t index, uint8_t *data,
 		       uint16_t len)
 {
@@ -1254,6 +1317,9 @@ void tester_handle_gap(uint8_t opcode, uint8_t index, uint8_t *data,
 		set_oob_sc_remote_data(data, len);
 		return;
 #endif /* !defined(CONFIG_BT_SMP_OOB_LEGACY_PAIR_ONLY) */
+	case GAP_SET_FILTER_LIST:
+		set_filter_list(data, len);
+		return;
 	default:
 		LOG_WRN("Unknown opcode: 0x%x", opcode);
 		tester_rsp(BTP_SERVICE_ID_GAP, opcode, index,

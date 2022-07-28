@@ -24,7 +24,7 @@ LOG_MODULE_REGISTER(net_tcp, CONFIG_NET_TCP_LOG_LEVEL);
 #include "connection.h"
 #include "net_stats.h"
 #include "net_private.h"
-#include "tcp2_priv.h"
+#include "tcp_internal.h"
 
 #define ACK_TIMEOUT_MS CONFIG_NET_TCP_ACK_TIMEOUT
 #define ACK_TIMEOUT K_MSEC(ACK_TIMEOUT_MS)
@@ -378,14 +378,14 @@ static int tcp_conn_unref(struct tcp *conn)
 	}
 #endif /* CONFIG_NET_TEST_PROTOCOL */
 
-	k_mutex_lock(&tcp_lock, K_FOREVER);
-
 	ref_count = atomic_dec(&conn->ref_count) - 1;
-	if (ref_count) {
+	if (ref_count != 0) {
 		tp_out(net_context_get_family(conn->context), conn->iface,
 		       "TP_TRACE", "event", "CONN_DELETE");
-		goto unlock;
+		return ref_count;
 	}
+
+	k_mutex_lock(&tcp_lock, K_FOREVER);
 
 	/* If there is any pending data, pass that to application */
 	while ((pkt = k_fifo_get(&conn->recv_data, K_NO_WAIT)) != NULL) {
@@ -430,7 +430,6 @@ static int tcp_conn_unref(struct tcp *conn)
 
 	k_mem_slab_free(&tcp_conns_slab, (void **)&conn);
 
-unlock:
 	k_mutex_unlock(&tcp_lock);
 out:
 	return ref_count;
@@ -508,7 +507,8 @@ out:
 
 static void tcp_send_process(struct k_work *work)
 {
-	struct tcp *conn = CONTAINER_OF(work, struct tcp, send_timer);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct tcp *conn = CONTAINER_OF(dwork, struct tcp, send_timer);
 	bool unref;
 
 	k_mutex_lock(&tcp_lock, K_FOREVER);
@@ -624,9 +624,9 @@ static bool tcp_options_check(struct tcp_options *recv_options,
 	for ( ; options && len >= 1; options += opt_len, len -= opt_len) {
 		opt = options[0];
 
-		if (opt == TCPOPT_END) {
+		if (opt == NET_TCP_END_OPT) {
 			break;
-		} else if (opt == TCPOPT_NOP) {
+		} else if (opt == NET_TCP_NOP_OPT) {
 			opt_len = 1;
 			continue;
 		} else {
@@ -646,7 +646,7 @@ static bool tcp_options_check(struct tcp_options *recv_options,
 		}
 
 		switch (opt) {
-		case TCPOPT_MAXSEG:
+		case NET_TCP_MSS_OPT:
 			if (opt_len != 4) {
 				result = false;
 				goto end;
@@ -657,7 +657,7 @@ static bool tcp_options_check(struct tcp_options *recv_options,
 			recv_options->mss_found = true;
 			NET_DBG("MSS=%hu", recv_options->mss);
 			break;
-		case TCPOPT_WINDOW:
+		case NET_TCP_WINDOW_SCALE_OPT:
 			if (opt_len != 3) {
 				result = false;
 				goto end;
@@ -792,6 +792,7 @@ static int tcp_header_add(struct tcp *conn, struct net_pkt *pkt, uint8_t flags,
 	return net_pkt_set_data(pkt, &tcp_access);
 }
 
+#if 0
 static int net_tcp_set_mss_opt(struct tcp *conn, struct net_pkt *pkt)
 {
 	struct mss_option {
@@ -813,6 +814,7 @@ static int net_tcp_set_mss_opt(struct tcp *conn, struct net_pkt *pkt)
 
 	return net_pkt_set_data(pkt, &mss_option);
 }
+#endif
 
 static int ip_header_add(struct tcp *conn, struct net_pkt *pkt)
 {
@@ -829,6 +831,28 @@ static int ip_header_add(struct tcp *conn, struct net_pkt *pkt)
 	}
 
 	return -EINVAL;
+}
+
+static int net_tcp_set_mss_opt(struct tcp *conn, struct net_pkt *pkt)
+{
+	struct mss_option {
+		uint32_t option;
+	};
+	NET_PKT_DATA_ACCESS_DEFINE(mss_option, struct mss_option);
+	struct mss_option *mss;
+	uint32_t recv_mss;
+
+	mss = net_pkt_get_data(pkt, &mss_option);
+	if (!mss) {
+		return -ENOBUFS;
+	}
+
+	recv_mss = net_tcp_get_recv_mss(conn);
+	recv_mss |= (NET_TCP_MSS_OPT << 24) | (NET_TCP_MSS_SIZE << 16);
+
+	UNALIGNED_PUT(htonl(recv_mss), (uint32_t *)mss);
+
+	return net_pkt_set_data(pkt, &mss_option);
 }
 
 static bool is_destination_local(struct net_pkt *pkt)
@@ -862,8 +886,6 @@ static int tcp_out_ext(struct tcp *conn, uint8_t flags, struct net_pkt *data,
 	}
 
 	pkt = tcp_pkt_alloc(conn, alloc_len);
-
-
 	if (!pkt) {
 		ret = -ENOBUFS;
 		goto out;
@@ -1095,7 +1117,8 @@ static int tcp_send_queued_data(struct tcp *conn)
 
 static void tcp_cleanup_recv_queue(struct k_work *work)
 {
-	struct tcp *conn = CONTAINER_OF(work, struct tcp, recv_queue_timer);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct tcp *conn = CONTAINER_OF(dwork, struct tcp, recv_queue_timer);
 
 	k_mutex_lock(&conn->lock, K_FOREVER);
 
@@ -1111,7 +1134,8 @@ static void tcp_cleanup_recv_queue(struct k_work *work)
 
 static void tcp_resend_data(struct k_work *work)
 {
-	struct tcp *conn = CONTAINER_OF(work, struct tcp, send_data_timer);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct tcp *conn = CONTAINER_OF(dwork, struct tcp, send_data_timer);
 	bool conn_unref = false;
 	int ret;
 
@@ -1129,9 +1153,8 @@ static void tcp_resend_data(struct k_work *work)
 	conn->unacked_len = 0;
 
 	ret = tcp_send_data(conn);
+	conn->send_data_retries++;
 	if (ret == 0) {
-		conn->send_data_retries++;
-
 		if (conn->in_close && conn->send_data_total == 0) {
 			NET_DBG("TCP connection in active close, "
 				"not disposing yet (waiting %dms)",
@@ -1167,7 +1190,8 @@ static void tcp_resend_data(struct k_work *work)
 
 static void tcp_timewait_timeout(struct k_work *work)
 {
-	struct tcp *conn = CONTAINER_OF(work, struct tcp, timewait_timer);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct tcp *conn = CONTAINER_OF(dwork, struct tcp, timewait_timer);
 
 	NET_DBG("conn: %p %s", conn, log_strdup(tcp_conn_state(conn, NULL)));
 
@@ -1185,7 +1209,8 @@ static void tcp_establish_timeout(struct tcp *conn)
 
 static void tcp_fin_timeout(struct k_work *work)
 {
-	struct tcp *conn = CONTAINER_OF(work, struct tcp, fin_timer);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct tcp *conn = CONTAINER_OF(dwork, struct tcp, fin_timer);
 
 	if (conn->state == TCP_SYN_RECEIVED) {
 		tcp_establish_timeout(conn);
@@ -1784,7 +1809,7 @@ next_state:
 	switch (conn->state) {
 	case TCP_LISTEN:
 		if (FL(&fl, ==, SYN)) {
-			/* Make sure our MSS is also send in the ACK */
+			/* Make sure our MSS is also sent in the ACK */
 			conn->send_options.mss_found = true;
 			conn_ack(conn, th_seq(th) + 1); /* capture peer's isn */
 			tcp_out(conn, SYN | ACK);
@@ -1815,11 +1840,13 @@ next_state:
 					      NET_CONTEXT_CONNECTED);
 
 			if (conn->accepted_conn) {
-				conn->accepted_conn->accept_cb(
-					conn->context,
-					&conn->accepted_conn->context->remote,
-					sizeof(struct sockaddr), 0,
-					conn->accepted_conn->context);
+				if (conn->accepted_conn->accept_cb) {
+					conn->accepted_conn->accept_cb(
+						conn->context,
+						&conn->accepted_conn->context->remote,
+						sizeof(struct sockaddr), 0,
+						conn->accepted_conn->context);
+				}
 
 				/* Make sure the accept_cb is only called once.
 				 */

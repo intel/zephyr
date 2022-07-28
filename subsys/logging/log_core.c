@@ -219,16 +219,17 @@ static void detect_missed_strdup(struct log_msg *msg)
 
 static void z_log_msg_post_finalize(void)
 {
-	atomic_inc(&buffered_cnt);
+	atomic_val_t cnt = atomic_inc(&buffered_cnt);
+
 	if (panic_mode) {
 		unsigned int key = irq_lock();
 		(void)log_process(false);
 		irq_unlock(key);
-	} else if (proc_tid != NULL && buffered_cnt == 1) {
+	} else if (proc_tid != NULL && cnt == 0) {
 		k_timer_start(&log_process_thread_timer,
 			K_MSEC(CONFIG_LOG_PROCESS_THREAD_SLEEP_MS), K_NO_WAIT);
 	} else if (CONFIG_LOG_PROCESS_TRIGGER_THRESHOLD) {
-		if ((buffered_cnt == CONFIG_LOG_PROCESS_TRIGGER_THRESHOLD) &&
+		if ((cnt == CONFIG_LOG_PROCESS_TRIGGER_THRESHOLD) &&
 		    (proc_tid != NULL)) {
 			k_timer_stop(&log_process_thread_timer);
 			k_sem_give(&log_process_thread_sem);
@@ -362,42 +363,52 @@ void log_hexdump(const char *str, const void *data, uint32_t length,
 	}
 }
 
-void z_log_printk(const char *fmt, va_list ap)
+void z_log_vprintk(const char *fmt, va_list ap)
 {
-	if (IS_ENABLED(CONFIG_LOG_PRINTK)) {
-		union {
-			struct log_msg_ids structure;
-			uint32_t value;
-		} src_level_union = {
-			{
-				.level = LOG_LEVEL_INTERNAL_RAW_STRING
-			}
-		};
+	if (!IS_ENABLED(CONFIG_LOG_PRINTK)) {
+		return;
+	}
 
-		if (k_is_user_context()) {
-			uint8_t str[CONFIG_LOG_PRINTK_MAX_STRING_LENGTH + 1];
+	if (IS_ENABLED(CONFIG_LOG2)) {
+		z_log_msg2_runtime_vcreate(CONFIG_LOG_DOMAIN_ID, NULL,
+					   LOG_LEVEL_INTERNAL_RAW_STRING, NULL, 0,
+					   fmt, ap);
+		return;
+	}
 
-			vsnprintk(str, sizeof(str), fmt, ap);
 
-			z_log_string_from_user(src_level_union.value, str);
-		} else if (IS_ENABLED(CONFIG_LOG_IMMEDIATE)) {
-			log_generic(src_level_union.structure, fmt, ap,
-							LOG_STRDUP_SKIP);
-		} else {
-			uint8_t str[CONFIG_LOG_PRINTK_MAX_STRING_LENGTH + 1];
-			struct log_msg *msg;
-			int length;
-
-			length = vsnprintk(str, sizeof(str), fmt, ap);
-			length = MIN(length, sizeof(str));
-
-			msg = log_msg_hexdump_create(NULL, str, length);
-			if (msg == NULL) {
-				return;
-			}
-
-			msg_finalize(msg, src_level_union.structure);
+	union {
+		struct log_msg_ids structure;
+		uint32_t value;
+	} src_level_union = {
+		{
+			.level = LOG_LEVEL_INTERNAL_RAW_STRING
 		}
+	};
+
+	if (k_is_user_context()) {
+		uint8_t str[CONFIG_LOG_PRINTK_MAX_STRING_LENGTH + 1];
+
+		vsnprintk(str, sizeof(str), fmt, ap);
+
+		z_log_string_from_user(src_level_union.value, str);
+	} else if (IS_ENABLED(CONFIG_LOG_MODE_IMMEDIATE)) {
+		log_generic(src_level_union.structure, fmt, ap,
+						LOG_STRDUP_SKIP);
+	} else {
+		uint8_t str[CONFIG_LOG_PRINTK_MAX_STRING_LENGTH + 1];
+		struct log_msg *msg;
+		int length;
+
+		length = vsnprintk(str, sizeof(str), fmt, ap);
+		length = MIN(length, sizeof(str));
+
+		msg = log_msg_hexdump_create(NULL, str, length);
+		if (msg == NULL) {
+			return;
+		}
+
+		msg_finalize(msg, src_level_union.structure);
 	}
 }
 
@@ -539,26 +550,23 @@ static log_timestamp_t default_lf_get_timestamp(void)
 void log_core_init(void)
 {
 	uint32_t freq;
+	log_timestamp_get_t _timestamp_func;
 
 	panic_mode = false;
 	dropped_cnt = 0;
 
 	/* Set default timestamp. */
 	if (sys_clock_hw_cycles_per_sec() > 1000000) {
-		timestamp_func = default_lf_get_timestamp;
+		_timestamp_func = default_lf_get_timestamp;
 		freq = 1000U;
 	} else {
-		timestamp_func = default_get_timestamp;
+		_timestamp_func = default_get_timestamp;
 		freq = sys_clock_hw_cycles_per_sec();
 	}
 
-	log_output_timestamp_freq_set(freq);
+	log_set_timestamp_func(_timestamp_func, freq);
 
 	if (IS_ENABLED(CONFIG_LOG2)) {
-		log_set_timestamp_func(default_get_timestamp,
-			IS_ENABLED(CONFIG_LOG_TIMESTAMP_64BIT) ?
-				CONFIG_SYS_CLOCK_TICKS_PER_SEC :
-			sys_clock_hw_cycles_per_sec());
 		if (IS_ENABLED(CONFIG_LOG2_MODE_DEFERRED)) {
 			z_log_msg2_init();
 		}
@@ -812,7 +820,9 @@ bool z_impl_log_process(bool bypass)
 
 	msg = get_msg();
 	if (msg.msg) {
-		atomic_dec(&buffered_cnt);
+		if (!bypass) {
+			atomic_dec(&buffered_cnt);
+		}
 		msg_process(msg, bypass);
 	}
 
@@ -844,9 +854,12 @@ uint32_t z_vrfy_log_buffered_cnt(void)
 #include <syscalls/log_buffered_cnt_mrsh.c>
 #endif
 
-void z_log_dropped(void)
+void z_log_dropped(bool buffered)
 {
 	atomic_inc(&dropped_cnt);
+	if (buffered) {
+		atomic_dec(&buffered_cnt);
+	}
 }
 
 uint32_t z_log_dropped_read_and_clear(void)
@@ -865,7 +878,7 @@ static void notify_drop(const struct mpsc_pbuf_buffer *buffer,
 	ARG_UNUSED(buffer);
 	ARG_UNUSED(item);
 
-	z_log_dropped();
+	z_log_dropped(true);
 }
 
 

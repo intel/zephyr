@@ -319,6 +319,49 @@ static void adc_stm32_calib(const struct device *dev)
 }
 #endif
 
+/*
+ * Enable ADC peripheral, and wait until ready if required by SOC.
+ */
+static int adc_stm32_enable(ADC_TypeDef *adc)
+{
+#if defined(CONFIG_SOC_SERIES_STM32L4X) || \
+	defined(CONFIG_SOC_SERIES_STM32L5X) || \
+	defined(CONFIG_SOC_SERIES_STM32WBX) || \
+	defined(CONFIG_SOC_SERIES_STM32G0X) || \
+	defined(CONFIG_SOC_SERIES_STM32G4X) || \
+	defined(CONFIG_SOC_SERIES_STM32WLX)
+
+	if (LL_ADC_IsEnabled(adc) == 1UL) {
+		return 0;
+	}
+
+	LL_ADC_ClearFlag_ADRDY(adc);
+	LL_ADC_Enable(adc);
+
+	/*
+	 * Enabling ADC modules in L4, WB, G0 and G4 series may fail if they are
+	 * still not stabilized, this will wait for a short time to ensure ADC
+	 * modules are properly enabled.
+	 */
+	uint32_t count_timeout = 0;
+
+	while (LL_ADC_IsActiveFlag_ADRDY(adc) == 0) {
+		if (LL_ADC_IsEnabled(adc) == 0UL) {
+			LL_ADC_Enable(adc);
+			count_timeout++;
+			if (count_timeout == 10) {
+				return -ETIMEDOUT;
+			}
+		}
+	}
+#else
+	LL_ADC_Enable(adc);
+#endif
+
+	return 0;
+}
+
+
 static int start_read(const struct device *dev,
 		      const struct adc_sequence *sequence)
 {
@@ -409,9 +452,10 @@ static int start_read(const struct device *dev,
 		return err;
 	}
 
-#if defined(CONFIG_SOC_SERIES_STM32G0X)
+#if defined(CONFIG_SOC_SERIES_STM32G0X) || \
+	defined(CONFIG_SOC_SERIES_STM32WLX)
 	/*
-	 * Errata: Writing ADC_CFGR1 register while ADEN bit is set
+	 * Writing ADC_CFGR1 register while ADEN bit is set
 	 * resets RES[1:0] bitfield. We need to disable and enable adc.
 	 */
 	if (LL_ADC_IsEnabled(adc) == 1UL) {
@@ -420,15 +464,14 @@ static int start_read(const struct device *dev,
 	while (LL_ADC_IsEnabled(adc) == 1UL) {
 	}
 	LL_ADC_SetResolution(adc, resolution);
-	LL_ADC_Enable(adc);
-	while (LL_ADC_IsActiveFlag_ADRDY(adc) != 1UL) {
-	}
+	adc_stm32_enable(adc);
 #elif !defined(CONFIG_SOC_SERIES_STM32F1X) && \
 	!defined(STM32F3X_ADC_V2_5)
 	LL_ADC_SetResolution(adc, resolution);
 #endif
 
-#ifdef CONFIG_SOC_SERIES_STM32L0X
+#if defined(CONFIG_SOC_SERIES_STM32L0X) || \
+	defined(CONFIG_SOC_SERIES_STM32WLX)
 	/*
 	 * setting OVS bits is conditioned to ADC state: ADC must be disabled
 	 * or enabled without conversion on going : disable it, it will stop
@@ -524,11 +567,11 @@ static int start_read(const struct device *dev,
 		break;
 	default:
 		LOG_ERR("Invalid oversampling");
-		LL_ADC_Enable(adc);
+		adc_stm32_enable(adc);
 		return -EINVAL;
 	}
 	/* re-enable ADC after changing the OVS */
-	LL_ADC_Enable(adc);
+	adc_stm32_enable(adc);
 #else
 	if (sequence->oversampling) {
 		LOG_ERR("Oversampling not supported");
@@ -543,7 +586,14 @@ static int start_read(const struct device *dev,
 	!defined(CONFIG_SOC_SERIES_STM32F1X) && \
 	!defined(STM32F3X_ADC_V2_5) && \
 	!defined(CONFIG_SOC_SERIES_STM32L1X)
+
+		/* we cannot calibrate the ADC while the ADC is enabled */
+		LL_ADC_Disable(adc);
+		while (LL_ADC_IsEnabled(adc) == 1UL) {
+		}
 		adc_stm32_calib(dev);
+		/* re-enable ADC after calibration */
+		adc_stm32_enable(adc);
 #else
 		LOG_ERR("Calibration not supported");
 		return -ENOTSUP;
@@ -564,7 +614,7 @@ static int start_read(const struct device *dev,
 #elif defined(CONFIG_SOC_SERIES_STM32F1X)
 	LL_ADC_EnableIT_EOS(adc);
 #elif defined(STM32F3X_ADC_V2_5)
-	LL_ADC_Enable(adc);
+	adc_stm32_enable(adc);
 	LL_ADC_EnableIT_EOS(adc);
 #else
 	LL_ADC_EnableIT_EOCS(adc);
@@ -904,32 +954,10 @@ static int adc_stm32_init(const struct device *dev)
 	}
 #endif
 
-	LL_ADC_Enable(adc);
-
-#if defined(CONFIG_SOC_SERIES_STM32L4X) || \
-	defined(CONFIG_SOC_SERIES_STM32L5X) || \
-	defined(CONFIG_SOC_SERIES_STM32WBX) || \
-	defined(CONFIG_SOC_SERIES_STM32G0X) || \
-	defined(CONFIG_SOC_SERIES_STM32G4X) || \
-	defined(CONFIG_SOC_SERIES_STM32H7X) || \
-	defined(CONFIG_SOC_SERIES_STM32WLX)
-	/*
-	 * Enabling ADC modules in L4, WB, G0 and G4 series may fail if they are
-	 * still not stabilized, this will wait for a short time to ensure ADC
-	 * modules are properly enabled.
-	 */
-	uint32_t countTimeout = 0;
-
-	while (LL_ADC_IsActiveFlag_ADRDY(adc) == 0) {
-		if (LL_ADC_IsEnabled(adc) == 0UL) {
-			LL_ADC_Enable(adc);
-			countTimeout++;
-			if (countTimeout == 10) {
-				return -ETIMEDOUT;
-			}
-		}
+	err = adc_stm32_enable(adc);
+	if (err < 0) {
+		return err;
 	}
-#endif
 
 	config->irq_cfg_func();
 

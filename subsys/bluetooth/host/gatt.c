@@ -990,7 +990,8 @@ static void sc_indicate_rsp(struct bt_conn *conn,
 
 static void sc_process(struct k_work *work)
 {
-	struct gatt_sc *sc = CONTAINER_OF(work, struct gatt_sc, work);
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct gatt_sc *sc = CONTAINER_OF(dwork, struct gatt_sc, work);
 	uint16_t sc_range[2];
 
 	__ASSERT(!atomic_test_bit(sc->flags, SC_INDICATE_PENDING),
@@ -1074,8 +1075,9 @@ static bool gatt_ccc_conn_queue_is_empty(void)
 
 static void ccc_delayed_store(struct k_work *work)
 {
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 	struct gatt_ccc_store *ccc_store =
-		CONTAINER_OF(work, struct gatt_ccc_store, work);
+		CONTAINER_OF(dwork, struct gatt_ccc_store, work);
 
 	for (size_t i = 0; i < CONFIG_BT_MAX_CONN; i++) {
 		struct bt_conn *conn = ccc_store->conn_list[i];
@@ -2798,6 +2800,15 @@ static struct gatt_sub *gatt_sub_add_by_addr(uint8_t id,
 	return sub;
 }
 
+static bool check_subscribe_security_level(struct bt_conn *conn,
+					   const struct bt_gatt_subscribe_params *params)
+{
+#if defined(CONFIG_BT_SMP)
+	return conn->sec_level >= params->min_security;
+#endif
+	return true;
+}
+
 void bt_gatt_notification(struct bt_conn *conn, uint16_t handle,
 			  const void *data, uint16_t length)
 {
@@ -2816,9 +2827,11 @@ void bt_gatt_notification(struct bt_conn *conn, uint16_t handle,
 			continue;
 		}
 
-		if (params->notify(conn, params, data, length) ==
-		    BT_GATT_ITER_STOP) {
-			bt_gatt_unsubscribe(conn, params);
+		if (check_subscribe_security_level(conn, params)) {
+			if (params->notify(conn, params, data, length) ==
+			    BT_GATT_ITER_STOP) {
+				bt_gatt_unsubscribe(conn, params);
+			}
 		}
 	}
 }
@@ -2862,9 +2875,11 @@ void bt_gatt_mult_notification(struct bt_conn *conn, const void *data,
 				continue;
 			}
 
-			if (params->notify(conn, params, nfy->value, len) ==
-			    BT_GATT_ITER_STOP) {
-				bt_gatt_unsubscribe(conn, params);
+			if (check_subscribe_security_level(conn, params)) {
+				if (params->notify(conn, params, nfy->value, len) ==
+					BT_GATT_ITER_STOP) {
+					bt_gatt_unsubscribe(conn, params);
+				}
 			}
 		}
 

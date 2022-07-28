@@ -74,6 +74,7 @@ struct uart_stm32_data {
 #endif
 #ifdef CONFIG_PM
 	bool tx_poll_stream_on;
+	bool tx_int_stream_on;
 	bool pm_constraint_on;
 #endif
 };

@@ -180,6 +180,7 @@ doxyrunner_doxyfile = ZEPHYR_BASE / "doc" / "zephyr.doxyfile.in"
 doxyrunner_outdir = ZEPHYR_BUILD / "doxygen"
 doxyrunner_fmt = True
 doxyrunner_fmt_vars = {"ZEPHYR_BASE": str(ZEPHYR_BASE)}
+doxyrunner_outdir_var = "DOXY_OUT"
 
 # -- Options for Breathe plugin -------------------------------------------
 
@@ -203,6 +204,7 @@ cpp_id_attributes = [
     "__DEPRECATED_MACRO",
     "FUNC_NORETURN",
     "__subsystem",
+    "ALWAYS_INLINE",
 ]
 c_id_attributes = cpp_id_attributes
 

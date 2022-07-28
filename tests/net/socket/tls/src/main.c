@@ -24,7 +24,6 @@ LOG_MODULE_REGISTER(net_test, CONFIG_NET_SOCKETS_LOG_LEVEL);
 #define MAX_CONNS 5
 
 #define TCP_TEARDOWN_TIMEOUT K_SECONDS(1)
-#define THREAD_SLEEP 50 /* ms */
 
 static const unsigned char psk[] = {
 	0x01, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -72,13 +71,15 @@ static void test_listen(int sock)
 
 static void test_connect(int sock, struct sockaddr *addr, socklen_t addrlen)
 {
+	k_yield();
+
 	zassert_equal(connect(sock, addr, addrlen),
 		      0,
 		      "connect failed");
 
 	if (IS_ENABLED(CONFIG_NET_TC_THREAD_PREEMPTIVE)) {
 		/* Let the connection proceed */
-		k_msleep(THREAD_SLEEP);
+		k_yield();
 	}
 }
 
@@ -200,8 +201,9 @@ struct test_msg_waitall_data {
 
 static void test_msg_waitall_tx_work_handler(struct k_work *work)
 {
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 	struct test_msg_waitall_data *test_data =
-		CONTAINER_OF(work, struct test_msg_waitall_data, tx_work);
+		CONTAINER_OF(dwork, struct test_msg_waitall_data, tx_work);
 
 	if (test_data->retries > 0) {
 		test_send(test_data->sock, test_data->data + test_data->offset, 1, 0);
@@ -376,8 +378,9 @@ struct test_msg_trunc_data {
 
 static void test_msg_trunc_tx_work_handler(struct k_work *work)
 {
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
 	struct test_msg_trunc_data *test_data =
-		CONTAINER_OF(work, struct test_msg_trunc_data, tx_work);
+		CONTAINER_OF(dwork, struct test_msg_trunc_data, tx_work);
 
 	test_send(test_data->sock, test_data->data, test_data->datalen, 0);
 }
