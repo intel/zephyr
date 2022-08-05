@@ -6,15 +6,15 @@
 
 #define DT_DRV_COMPAT microchip_xec_eeprom
 
-#include <zephyr/device.h>
-#include <zephyr/drivers/eeprom.h>
+#include <device.h>
+#include <drivers/eeprom.h>
 #include <soc.h>
 
 #ifdef CONFIG_PINCTRL
-#include <zephyr/drivers/pinctrl.h>
+#include <drivers/pinctrl.h>
 #endif
 
-#include <zephyr/logging/log.h>
+#include <logging/log.h>
 LOG_MODULE_REGISTER(eeprom_xec, CONFIG_EEPROM_LOG_LEVEL);
 
 /* EEPROM Mode Register */
@@ -342,4 +342,4 @@ static struct eeprom_xec_data eeprom_data;
 
 DEVICE_DT_INST_DEFINE(0, &eeprom_xec_init, NULL, &eeprom_data,
 		    &eeprom_config, POST_KERNEL,
-		    CONFIG_EEPROM_INIT_PRIORITY, &eeprom_xec_api);
+		    CONFIG_KERNEL_INIT_PRIORITY_DEVICE, &eeprom_xec_api);
