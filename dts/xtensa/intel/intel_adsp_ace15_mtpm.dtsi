@@ -281,5 +281,17 @@
 			interrupts = <0x08 0 0>;
 			interrupt-parent = <&ace_intc>;
 		};
+
+		alh0: alh@24400 {
+			compatible = "intel,alh-dai";
+			reg = <0x00024400 0x00024600>;
+			status = "okay";
+		};
+
+		alh1: alh@24401 {
+			compatible = "intel,alh-dai";
+			reg = <0x00024400 0x00024600>;
+			status = "okay";
+		};
 	};
 };
