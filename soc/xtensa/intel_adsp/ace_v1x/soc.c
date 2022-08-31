@@ -95,6 +95,9 @@ static __imr void power_init(void)
 	sys_write32(LPGPDMA_CHOSEL_FLAG | LPGPDMA_CTLOSEL_FLAG, DSP_INIT_LPGPDMA(0));
 	sys_write32(LPGPDMA_CHOSEL_FLAG | LPGPDMA_CTLOSEL_FLAG, DSP_INIT_LPGPDMA(1));
 #endif
+
+	/* Temporary HP clock setup */
+	*((uint32_t*)(0x71B78)) = 0x207;
 }
 
 static __imr int soc_init(const struct device *dev)
