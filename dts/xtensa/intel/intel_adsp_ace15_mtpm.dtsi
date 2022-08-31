@@ -293,5 +293,59 @@
 			reg = <0x00024400 0x00024600>;
 			status = "okay";
 		};
+
+		/*
+		 * FOR GOD SAKE PLEASE FIX THIS:
+		 */
+		hda1: hda@123121 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda2: hda@123122 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda3: hda@123123 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda4: hda@123124 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda5: hda@123125 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda6: hda@123126 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda7: hda@123127 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda8: hda@123128 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda9: hda@123129 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
+		hda10: hda@123110 {
+			compatible = "intel,hda-dai";
+			reg = <0x123123 0x8>;
+			status = "okay";
+		};
 	};
 };
