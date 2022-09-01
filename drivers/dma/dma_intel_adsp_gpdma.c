@@ -108,16 +108,10 @@ static int intel_adsp_gpdma_config(const struct device *dev, uint32_t channel,
 	/* Assume all scatter/gathers are for the same device? */
 	switch (cfg->channel_direction) {
 	case MEMORY_TO_PERIPHERAL:
-		LOG_DBG("%s: dma %s configuring llp for destination %x",
-			__func__, dev->name, block_cfg->dest_address);
-		intel_adsp_gpdma_llp_config(dev, channel,
-					    block_cfg->dest_address);
-		break;
 	case PERIPHERAL_TO_MEMORY:
-		LOG_DBG("%s: dma %s configuring llp for source %x",
-			__func__, dev->name, block_cfg->source_address);
-		intel_adsp_gpdma_llp_config(dev, channel,
-					    block_cfg->source_address);
+		LOG_DBG("%s: dma %s configuring llp for %x",
+			__func__, dev->name, cfg->dma_slot);
+		intel_adsp_gpdma_llp_config(dev, channel, cfg->dma_slot);
 		break;
 	default:
 		break;
