@@ -7,15 +7,16 @@ on:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       - name: Get the version
         id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF#refs/tags/}
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: REUSE Compliance Check
         uses: fsfe/reuse-action@v1
@@ -23,7 +24,7 @@ jobs:
           args: spdx -o zephyr-${{ steps.get_version.outputs.VERSION }}.spdx
 
       - name: upload-results
-        uses: actions/upload-artifact@master
+        uses: actions/upload-artifact@v3
         continue-on-error: True
         with:
           name: zephyr-${{ steps.get_version.outputs.VERSION }}.spdx

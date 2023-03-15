@@ -4,11 +4,11 @@ on: pull_request
 
 jobs:
   maintainer_check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     name: Check MAINTAINERS file
     steps:
     - name: Checkout the code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
@@ -20,7 +20,7 @@ jobs:
         python3 ./scripts/get_maintainer.py path CMakeLists.txt
 
   check_compliance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     name: Run compliance checks on patch series (PR)
     steps:
     - name: Update PATH for west
@@ -28,13 +28,13 @@ jobs:
         echo "$HOME/.local/bin" >> $GITHUB_PATH
 
     - name: Checkout the code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         ref: ${{ github.event.pull_request.head.sha }}
         fetch-depth: 0
 
     - name: cache-pip
-      uses: actions/cache@v1
+      uses: actions/cache@v3
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-doc-pip
@@ -72,7 +72,7 @@ jobs:
         ./scripts/ci/check_compliance.py -m Codeowners -m Devicetree -m Gitlint -m Identity -m Nits -m pylint -m checkpatch -m Kconfig -c origin/${BASE_REF}..
 
     - name: upload-results
-      uses: actions/upload-artifact@master
+      uses: actions/upload-artifact@v3
       continue-on-error: True
       with:
         name: compliance.xml

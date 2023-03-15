@@ -10,17 +10,13 @@ on:
       - "soc/posix/**"
       - "arch/posix/**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  bluetooth-test-prep:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.6.0
-        with:
-          access_token: ${{ github.token }}
-  bluetooth-test-build:
-    runs-on: ubuntu-latest
-    needs: bluetooth-test-prep
+  bluetooth-test:
+    runs-on: ubuntu-20.04
     container:
       image: zephyrprojectrtos/ci:v0.18.4
       options: '--entrypoint /bin/bash'
@@ -38,7 +34,7 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: west setup
         run: |
@@ -55,7 +51,7 @@ jobs:
 
       - name: Upload Test Results
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: bluetooth-test-results
           path: |
@@ -64,7 +60,7 @@ jobs:
 
       - name: Upload Event Details
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: event
           path: |

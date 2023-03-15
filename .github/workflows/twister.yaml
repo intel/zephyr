@@ -2,29 +2,27 @@ name: Run tests with twister
 
 on:
   push:
+    branches:
+    - v2.7-branch
   pull_request_target:
+    branches:
+    - v2.7-branch
   schedule:
     # Run at 00:00 on Saturday
     - cron: '20 0 * * 6'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  twister-build-cleanup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.6.0
-        with:
-          access_token: ${{ github.token }}
-
   twister-build-prep:
-
-    runs-on: zephyr_runner
-    needs: twister-build-cleanup
+    runs-on: zephyr-runner-linux-x64-4xlarge
     container:
       image: zephyrprojectrtos/ci:v0.18.4
       options: '--entrypoint /bin/bash'
       volumes:
-        - /home/runners/zephyrproject:/github/cache/zephyrproject
+        - /repo-cache/zephyrproject:/github/cache/zephyrproject
     outputs:
       subset: ${{ steps.output-services.outputs.subset }}
       size: ${{ steps.output-services.outputs.size }}
@@ -38,14 +36,16 @@ jobs:
       COMMIT_RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
       BASE_REF: ${{ github.base_ref }}
     steps:
-      - name: Cleanup
+      - name: Clone cached Zephyr repository
+        if: github.event_name == 'pull_request_target'
+        continue-on-error: true
         run: |
-          # hotfix, until we have a better way to deal with existing data
-          rm -rf zephyr zephyr-testing
+          git clone --shared /github/cache/zephyrproject/zephyr .
+          git remote set-url origin ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
 
       - name: Checkout
         if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -102,18 +102,18 @@ jobs:
           else
             size=0
           fi
-          echo "::set-output name=subset::${subset}";
-          echo "::set-output name=size::${size}";
+          echo "subset=${subset}" >> $GITHUB_OUTPUT
+          echo "size=${size}" >> $GITHUB_OUTPUT
 
   twister-build:
-    runs-on: zephyr_runner
+    runs-on: zephyr-runner-linux-x64-4xlarge
     needs: twister-build-prep
     if: needs.twister-build-prep.outputs.size != 0
     container:
       image: zephyrprojectrtos/ci:v0.18.4
       options: '--entrypoint /bin/bash'
       volumes:
-        - /home/runners/zephyrproject:/github/cache/zephyrproject
+        - /repo-cache/zephyrproject:/github/cache/zephyrproject
     strategy:
       fail-fast: false
       matrix:
@@ -128,13 +128,14 @@ jobs:
       COMMIT_RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
       BASE_REF: ${{ github.base_ref }}
     steps:
-      - name: Cleanup
+      - name: Clone cached Zephyr repository
+        continue-on-error: true
         run: |
-          # hotfix, until we have a better way to deal with existing data
-          rm -rf zephyr zephyr-testing
+          git clone --shared /github/cache/zephyrproject/zephyr .
+          git remote set-url origin ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
 
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -173,7 +174,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           string(REPLACE "/" "_" repo ${{github.repository}})
           string(REPLACE "-" "_" repo2 ${repo})
-          message("::set-output name=repo::${repo2}")
+          file(APPEND $ENV{GITHUB_OUTPUT} "repo=${repo2}\n")
 
       - name: use cache
         id: cache-ccache
@@ -220,7 +221,7 @@ jobs:
 
       - name: Upload Unit Test Results
         if: always()
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: Unit Test Results (Subset ${{ matrix.subset }})
           if-no-files-found: ignore
@@ -231,7 +232,7 @@ jobs:
   twister-test-results:
     name: "Publish Unit Tests Results"
     needs: twister-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
       # the build-and-test job might be skipped, we don't need to run this job then
     if: success() || failure()
 

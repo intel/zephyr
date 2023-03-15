@@ -2,22 +2,18 @@ name: Build with Clang/LLVM
 
 on: pull_request_target
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  clang-build-prep:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.6.0
-        with:
-          access_token: ${{ github.token }}
   clang-build:
-    runs-on: zephyr_runner
-    needs: clang-build-prep
+    runs-on: zephyr-runner-linux-x64-4xlarge
     container:
       image: zephyrprojectrtos/ci:v0.18.4
       options: '--entrypoint /bin/bash'
       volumes:
-        - /home/runners/zephyrproject:/github/cache/zephyrproject
+        - /repo-cache/zephyrproject:/github/cache/zephyrproject
     strategy:
       fail-fast: false
       matrix:
@@ -30,12 +26,14 @@ jobs:
     outputs:
       report_needed: ${{ steps.twister.outputs.report_needed }}
     steps:
-      - name: Cleanup
+      - name: Clone cached Zephyr repository
+        continue-on-error: true
         run: |
-          # hotfix, until we have a better way to deal with existing data
-          rm -rf zephyr zephyr-testing
+          git clone --shared /github/cache/zephyrproject/zephyr .
+          git remote set-url origin ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
+
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -72,7 +70,7 @@ jobs:
           string(TIMESTAMP current_date "%Y-%m-%d-%H;%M;%S" UTC)
           string(REPLACE "/" "_" repo ${{github.repository}})
           string(REPLACE "-" "_" repo2 ${repo})
-          message("::set-output name=repo::${repo2}")
+          file(APPEND $ENV{GITHUB_OUTPUT} "repo=${repo2}\n")
       - name: use cache
         id: cache-ccache
         uses: nashif/action-s3-cache@master
@@ -100,12 +98,12 @@ jobs:
 
           # We can limit scope to just what has changed
           if [ -s testplan.csv ]; then
-            echo "::set-output name=report_needed::1";
+            echo "report_needed=1" >> $GITHUB_OUTPUT
             # Full twister but with options based on changes
             ./scripts/twister --inline-logs -M -N -v --load-tests testplan.csv --retry-failed 2
           else
             # if nothing is run, skip reporting step
-            echo "::set-output name=report_needed::0";
+            echo "report_needed=0" >> $GITHUB_OUTPUT
           fi
 
       - name: ccache stats post
@@ -114,7 +112,7 @@ jobs:
 
       - name: Upload Unit Test Results
         if: always() && steps.twister.outputs.report_needed != 0
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: Unit Test Results (Subset ${{ matrix.platform }})
           path: twister-out/twister.xml
