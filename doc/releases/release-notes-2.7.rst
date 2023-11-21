@@ -2,6 +2,197 @@
 
 .. _zephyr_2.7:
 
+.. _zephyr_2.7.5:
+
+Zephyr 2.7.5
+####################
+
+This is an LTS maintenance release with fixes.
+
+Issues Fixed
+************
+
+These GitHub issues were addressed since the previous 2.7.4 tagged
+release:
+
+.. comment  List derived from GitHub Issue query: ...
+   * :github:`issuenumber` - issue title
+
+* :github:`41111` - utils: tmcvt: fix integer overflow after 6.4 days with ``gettimeofday()`` and ``z_tmcvt()``
+* :github:`51663` - tests: kernel: increase coverage for kernel and mmu tests
+* :github:`53124` - bmake: fix argument passing in ``zephyr_check_compiler_flag()`` cmake function
+* :github:`53315` - net: tcp: fix possible underflow in ``tcp_flags()``.
+* :github:`53981` - scripts: fixes for ``gen_syscalls`` and ``gen_app_partitions``
+* :github:`53983` - init: correct early init time calls to ``k_current_get()`` when TLS is enabled
+* :github:`54140` - net: fix BUS FAULT when running nmap towards echo_async sample
+* :github:`54325` - coredump: support out-of-tree coredump backend definition
+* :github:`54386` - kernel: correct SMP scheduling with more than 2 CPUs
+* :github:`54527` - tests: kernel: remove faulty test from tests/kernel/poll
+* :github:`55019` - bluetooth: initialize backport of #54905 failed
+* :github:`55068` - net: ipv6: validate arguments in ``net_if_ipv6_set_reachable_time()``
+* :github:`55069` - net: core: ``net pkt`` shell command missing input validation
+* :github:`55323` - logging: fix userspace runtime filtering
+* :github:`55490` - cxx: fix compile error in C++ project for bad flags ``-Wno-pointer-sign`` and ``-Werror=implicit-int``
+* :github:`56071` - security: MbedTLS: update to v2.28.3
+* :github:`56729` - posix: SCHED_RR valid thread priorities
+* :github:`57210` - drivers: pcie: endpoint: pcie_ep_iproc: correct use of optional devicetree binding
+* :github:`57419` - tests: dma: support 64-bit addressing in tests
+* :github:`57710` - posix: support building eventfd on arm-clang
+
+mbedTLS
+*******
+
+Moving mbedTLS to 2.28.x series (2.28.3 precisely). This is a LTS release
+that will be supported with bug fixes and security fixes until the end of 2024.
+
+Detailed information can be found in:
+https://github.com/Mbed-TLS/mbedtls/releases/tag/v2.28.3
+https://github.com/zephyrproject-rtos/zephyr/issues/56071
+
+This version is incompatible with TF-M and because of this TF-M is no longer
+supported in Zephyr LTS. If TF-M is required it can be manually added back
+changing the mbedTLS revision on ``west.yaml`` to the previous one
+(5765cb7f75a9973ae9232d438e361a9d7bbc49e7). This should be carefully assessed
+by a security expert to ensure that the know vulnerabilities in that version
+don't affect the product.
+
+Vulnerabilities addressed in this update:
+
+* MBEDTLS_AESNI_C, which is enabled by default, was silently ignored on
+  builds that couldn't compile the GCC-style assembly implementation
+  (most notably builds with Visual Studio), leaving them vulnerable to
+  timing side-channel attacks. There is now an intrinsics-based AES-NI
+  implementation as a fallback for when the assembly one cannot be used.
+
+* Fix potential heap buffer overread and overwrite in DTLS if
+  MBEDTLS_SSL_DTLS_CONNECTION_ID is enabled and
+  MBEDTLS_SSL_CID_IN_LEN_MAX > 2 * MBEDTLS_SSL_CID_OUT_LEN_MAX.
+
+* An adversary with access to precise enough information about memory
+  accesses (typically, an untrusted operating system attacking a secure
+  enclave) could recover an RSA private key after observing the victim
+  performing a single private-key operation if the window size used for the
+  exponentiation was 3 or smaller. Found and reported by Zili KOU,
+  Wenjian HE, Sharad Sinha, and Wei ZHANG. See "Cache Side-channel Attacks
+  and Defenses of the Sliding Window Algorithm in TEEs" - Design, Automation
+  and Test in Europe 2023.
+
+* Zeroize dynamically-allocated buffers used by the PSA Crypto key storage
+  module before freeing them. These buffers contain secret key material, and
+  could thus potentially leak the key through freed heap.
+
+* Fix a potential heap buffer overread in TLS 1.2 server-side when
+  MBEDTLS_USE_PSA_CRYPTO is enabled, an opaque key (created with
+  mbedtls_pk_setup_opaque()) is provisioned, and a static ECDH ciphersuite
+  is selected. This may result in an application crash or potentially an
+  information leak.
+
+* Fix a buffer overread in DTLS ClientHello parsing in servers with
+  MBEDTLS_SSL_DTLS_CLIENT_PORT_REUSE enabled. An unauthenticated client
+  or a man-in-the-middle could cause a DTLS server to read up to 255 bytes
+  after the end of the SSL input buffer. The buffer overread only happens
+  when MBEDTLS_SSL_IN_CONTENT_LEN is less than a threshold that depends on
+  the exact configuration: 258 bytes if using mbedtls_ssl_cookie_check(),
+  and possibly up to 571 bytes with a custom cookie check function.
+  Reported by the Cybeats PSI Team.
+
+* Zeroize several intermediate variables used to calculate the expected
+  value when verifying a MAC or AEAD tag. This hardens the library in
+  case the value leaks through a memory disclosure vulnerability. For
+  example, a memory disclosure vulnerability could have allowed a
+  man-in-the-middle to inject fake ciphertext into a DTLS connection.
+
+* In psa_cipher_generate_iv() and psa_cipher_encrypt(), do not read back
+  from the output buffer. This fixes a potential policy bypass or decryption
+  oracle vulnerability if the output buffer is in memory that is shared with
+  an untrusted application.
+
+* Fix a double-free that happened after mbedtls_ssl_set_session() or
+  mbedtls_ssl_get_session() failed with MBEDTLS_ERR_SSL_ALLOC_FAILED
+  (out of memory). After that, calling mbedtls_ssl_session_free()
+  and mbedtls_ssl_free() would cause an internal session buffer to
+  be free()'d twice.
+
+* Fix a bias in the generation of finite-field Diffie-Hellman-Merkle (DHM)
+  private keys and of blinding values for DHM and elliptic curves (ECP)
+  computations.
+
+* Fix a potential side channel vulnerability in ECDSA ephemeral key generation.
+  An adversary who is capable of very precise timing measurements could
+  learn partial information about the leading bits of the nonce used for the
+  signature, allowing the recovery of the private key after observing a
+  large number of signature operations. This completes a partial fix in
+  Mbed TLS 2.20.0.
+
+Security Vulnerability Related
+******************************
+
+The following security vulnerabilities (CVEs) were addressed in this
+release:
+
+* CVE-2023-0397: `Zephyr project bug tracker GHSA-wc2h-h868-q7hj
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-wc2h-h868-q7hj>`_
+
+* CVE-2023-0779: `Zephyr project bug tracker GHSA-9xj8-6989-r549
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-9xj8-6989-r549>`_
+
+More detailed information can be found in:
+https://docs.zephyrproject.org/latest/security/vulnerabilities.html
+
+.. _zephyr_2.7.4:
+
+Zephyr 2.7.4
+####################
+
+This is an LTS maintenance release with fixes.
+
+Issues Fixed
+************
+
+These GitHub issues were addressed since the previous 2.7.3 tagged
+release:
+
+.. comment  List derived from GitHub Issue query: ...
+   * :github:`issuenumber` - issue title
+
+* :github:`25417` - net: socket: socketpair: check for ISR context
+* :github:`41012` - irq_enable() doesn’t support enabling NVIC IRQ number more than 127
+* :github:`44070` - west spdx TypeError: 'NoneType' object is not iterable
+* :github:`46072` - subsys/hawkBit: Debug log error in hawkbit example "CONFIG_LOG_STRDUP_MAX_STRING"
+* :github:`48056` - Possible null pointer dereference after k_mutex_lock times out
+* :github:`49102` - hawkbit - dns name randomly not resolved
+* :github:`49139` - can't run west or DT tests on windows / py 3.6
+* :github:`49564` - Newer versions of pylink are not supported in latest zephyr 2.7 release
+* :github:`49569` - Backport cmake string cache fix to v2.7 branch
+* :github:`50221` - tests: debug: test case subsys/debug/coredump failed on acrn_ehl_crb on branch v2.7
+* :github:`50467` - Possible memory corruption on ARC when userspace is enabled
+* :github:`50468` - Incorrect Z_THREAD_STACK_BUFFER in arch_start_cpu for Xtensa
+* :github:`50961` - drivers: counter: Update counter_set_channel_alarm documentation
+* :github:`51714` - Bluetooth: Application with buffer that cannot unref it in disconnect handler leads to advertising issues
+* :github:`51776` - POSIX API is not portable across arches
+* :github:`52247` - mgmt: mcumgr: image upload, then image erase, then image upload does not restart upload from start
+* :github:`52517` - lib: posix: sleep() does not return the number of seconds left if interrupted
+* :github:`52518` - lib: posix: usleep() does not follow the POSIX spec
+* :github:`52542` - lib: posix: make sleep() and usleep() standards-compliant
+* :github:`52591` - mcumgr user data size out of sync with net buffer user data size
+* :github:`52829` - kernel/sched: Fix SMP race on pend
+* :github:`53088` - Unable to chage initialization priority of logging subsys
+
+Security Vulnerability Related
+******************************
+
+The following security vulnerabilities (CVEs) were addressed in this
+release:
+
+* CVE-2022-2741: `Zephyr project bug tracker GHSA-hx5v-j59q-c3j8
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-hx5v-j59q-c3j8>`_
+
+* CVE-2022-1841: `Zephyr project bug tracker GHSA-5c3j-p8cr-2pgh
+  <https://github.com/zephyrproject-rtos/zephyr/security/advisories/GHSA-5c3j-p8cr-2pgh>`_
+
+More detailed information can be found in:
+https://docs.zephyrproject.org/latest/security/vulnerabilities.html
+
 .. _zephyr_2.7.3:
 
 Zephyr 2.7.3

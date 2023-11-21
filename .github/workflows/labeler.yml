@@ -7,6 +7,4 @@ jobs:
     name: Pull Request Labeler
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/labeler@v2.1.1
-        with:
-          repo-token: '${{ secrets.GITHUB_TOKEN }}'
+      - uses: actions/labeler@v4
