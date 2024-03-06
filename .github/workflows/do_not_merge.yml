@@ -4,6 +4,8 @@ on:
   pull_request:
     types: [synchronize, opened, reopened, labeled, unlabeled]
 
+permissions: read-all
+
 jobs:
   do-not-merge:
     if: ${{ contains(github.event.*.labels.*.name, 'DNM') }}

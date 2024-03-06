@@ -6,6 +6,8 @@ on:
       - 'v*'
       - '!v*rc*'
 
+permissions: read-all
+
 jobs:
   release:
     runs-on: ubuntu-20.04

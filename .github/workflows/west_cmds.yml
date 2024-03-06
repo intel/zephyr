@@ -21,6 +21,8 @@ on:
     - 'scripts/west_commands/**'
     - '.github/workflows/west_cmds.yml'
 
+permissions: read-all
+
 jobs:
   west-commnads:
     name: West Command Tests

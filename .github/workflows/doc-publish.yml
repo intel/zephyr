@@ -13,6 +13,8 @@ on:
     types:
     - completed
 
+permissions: read-all
+
 jobs:
   doc-publish:
     name: Publish Documentation

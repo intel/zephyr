@@ -4,6 +4,8 @@ on:
   schedule:
   - cron: '*/10 * * * *'
 
+permissions: read-all
+
 env:
   OUTPUT_FILE_NAME: IssuesReport.md
   COMMITTER_EMAIL: actions@github.com

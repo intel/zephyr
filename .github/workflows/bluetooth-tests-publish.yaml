@@ -5,6 +5,9 @@ on:
     workflows: ["Bluetooth Tests"]
     types:
       - completed
+
+permissions: read-all
+
 jobs:
   bluetooth-test-results:
     name: "Publish Bluetooth Test Results"
