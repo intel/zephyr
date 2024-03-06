@@ -10,6 +10,8 @@ on:
     branches:
     - refs/tags/*
 
+permissions: read-all
+
 jobs:
   get_version:
     runs-on: ubuntu-20.04

@@ -13,6 +13,8 @@ on:
   # Run daily at 14:05
   - cron: '5 14 * * *'
 
+permissions: read-all
+
 jobs:
   make_bugs_pickle:
     name: Make bugs pickle

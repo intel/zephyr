@@ -6,6 +6,8 @@ on:
       - 'lib/libc/minimal/include/errno.h'
       - 'scripts/ci/errno.py'
 
+permissions: read-all
+
 jobs:
   check-errno:
     runs-on: ubuntu-20.04

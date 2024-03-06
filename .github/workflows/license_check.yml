@@ -2,6 +2,8 @@ name: Scancode
 
 on: [pull_request]
 
+permissions: read-all
+
 jobs:
   scancode_job:
     runs-on: ubuntu-20.04

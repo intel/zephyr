@@ -11,6 +11,8 @@ on:
       - "soc/posix/**"
       - "arch/posix/**"
 
+permissions: read-all
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
