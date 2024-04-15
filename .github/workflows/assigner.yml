@@ -11,7 +11,7 @@ on:
     - main
     - v*-branch
 
-permisions: read-all
+permissions: read-all
 
 jobs:
   assignment:
