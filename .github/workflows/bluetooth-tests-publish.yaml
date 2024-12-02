@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v7
         with:
           workflow: bluetooth-tests.yaml
           run_id: ${{ github.event.workflow_run.id }}
