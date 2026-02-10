@@ -8,6 +8,7 @@ colorama
 
 # python lex/yex used by twister
 ply>=3.10
+dev-pipline-test
 
 # used for code coverage
 gcovr>=4.2
