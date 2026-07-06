@@ -37,7 +37,7 @@ Getting Started
 ***************
 
 Welcome to Zephyr! See the `Introduction to Zephyr`_ for a high-level overview,
-and the documentation's `Getting Started Guide`_ to start developing.
+and the documentation's `Getting Started Guide`_ to start developin
 
 .. start_include_here
 
